@@ -283,21 +283,102 @@ tbody td{padding:11px 14px;vertical-align:middle}
 @keyframes loadbar{0%{background-position:0% 0}100%{background-position:200% 0}}
 .divider{height:1px;background:var(--border);margin:16px 0}
 
-/* ── MOBILE ── */
-.mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:6px 0 10px;z-index:100}
-@media(max-width:1100px){.dash-row-2{grid-template-columns:1fr}.dash-row-3{grid-template-columns:1fr 1fr}}
-@media(max-width:768px){
-  .mobile-nav{display:flex;justify-content:space-around}
-  .container{padding-bottom:72px}
-  .nav-tabs{display:none}
-  .form-row{grid-template-columns:1fr}
-  .logo span{display:none}
-  .dash-row-3{grid-template-columns:1fr}
-  .dash-row-4{grid-template-columns:1fr}
-}
-.mobile-tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 14px;font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer}
+/* ── TABLES — always scrollable ── */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.table-wrap table{min-width:600px}
+
+/* ── MOBILE NAV ── */
+.mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:6px 0 max(10px,env(safe-area-inset-bottom));z-index:100}
+.mobile-tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px 10px;font-size:10px;color:var(--muted);background:none;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .mobile-tab.active{color:var(--accent2)}
 .mobile-tab svg{width:19px;height:19px}
+
+/* ── 1200px — wide tablet / small laptop ── */
+@media(max-width:1200px){
+  .dash-row-2{grid-template-columns:1fr}
+  .dash-row-4{grid-template-columns:1fr 1fr}
+}
+
+/* ── 1024px — iPad landscape / small laptop ── */
+@media(max-width:1024px){
+  .nav-tabs{gap:1px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;max-width:calc(100vw - 340px)}
+  .nav-tabs::-webkit-scrollbar{display:none}
+  .nav-tab{padding:6px 10px;font-size:12px}
+  .topbar-actions{gap:5px}
+  .btn-sync{padding:7px 10px;font-size:12px}
+  #btn-cloud-login span{display:none}
+  .cloud-name{display:none!important}
+  .dash-row-3{grid-template-columns:1fr 1fr}
+  .dash-row-4{grid-template-columns:1fr 1fr}
+  .summary-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+}
+
+/* ── 768px — iPad portrait / large phones ── */
+@media(max-width:768px){
+  /* topbar */
+  .topbar{padding:0 12px;gap:6px;height:56px}
+  .nav-tabs{display:none}
+  .logo-full{display:none}
+  .logo-short{display:inline!important}
+  .topbar-actions{gap:4px}
+  /* hide Calculator & label text on mobile; keep icon buttons */
+  .btn-calc-full{display:none}
+  .btn-sync-label{display:none}
+  /* Sync price button: icon only */
+  #btn-sync .sync-label{display:none}
+  /* Cloud: icon only */
+  #btn-cloud-login{padding:7px 9px;font-size:13px;gap:0}
+  /* Add Trade: shorter */
+  .btn-add{padding:7px 12px;font-size:12px}
+  /* mobile bottom nav */
+  .mobile-nav{display:flex;justify-content:space-around}
+  .container{padding:16px 12px calc(72px + env(safe-area-inset-bottom))}
+  /* grids */
+  .dash-row-2,.dash-row-3,.dash-row-4{grid-template-columns:1fr}
+  .summary-grid{grid-template-columns:repeat(2,1fr);gap:10px}
+  .card{padding:14px 16px}
+  .card-value{font-size:19px}
+  /* modals */
+  .modal{width:calc(100vw - 24px);max-width:none;padding:20px 16px;border-radius:14px}
+  .form-row{grid-template-columns:1fr}
+  /* filter bar */
+  .filter-bar{gap:5px}
+  .search-input{width:100%;margin-left:0;margin-top:4px}
+  /* report config */
+  .report-cfg{flex-direction:column;gap:12px}
+  .rpt-type-btns{flex-wrap:wrap;gap:5px}
+  .rpt-date-row{flex-wrap:wrap}
+  .rpt-actions-bar{flex-wrap:wrap}
+  .btn-print,.btn-dl{flex:1;justify-content:center}
+  /* table wrap */
+  .table-wrap{border-radius:10px}
+  /* section head */
+  .section-head{flex-wrap:wrap;gap:8px}
+  /* report doc */
+  .report-doc-wrap{padding:20px 16px}
+  .rep-kpis{grid-template-columns:1fr 1fr}
+}
+
+/* ── 480px — small phones ── */
+@media(max-width:480px){
+  .topbar{padding:0 10px;gap:4px;height:52px}
+  .logo svg{width:20px;height:20px}
+  .logo span{font-size:13px}
+  /* hide data backup icon label on very small screens */
+  .btn-theme{width:32px;height:32px;font-size:14px}
+  .summary-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+  .card{padding:12px 14px}
+  .card-value{font-size:17px}
+  .card-label{font-size:10px}
+  .mobile-tab{padding:4px 6px;font-size:9px}
+  /* hide sector pie chart legend on very small screens to save space */
+  .performer-sym{font-size:13px}
+  .container{padding:12px 10px calc(68px + env(safe-area-inset-bottom))}
+  /* tables: smaller text */
+  table{font-size:12px}
+  thead th{padding:9px 10px;font-size:10px}
+  tbody td{padding:9px 10px}
+}
 
 /* ── WATCHLIST ── */
 .wl-signal{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap}
@@ -345,7 +426,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
 <div class="topbar">
   <div class="logo">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-    <span>Rafat's Portfolio Manager</span>
+    <span class="logo-full">Rafat's Portfolio Manager</span><span class="logo-short" style="display:none">Portfolio</span>
   </div>
   <div class="nav-tabs">
     <button class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</button>
@@ -357,7 +438,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
   </div>
   <div class="topbar-actions">
     <!-- Theme picker -->
-    <button class="btn-sync" onclick="openCalcModal()" style="white-space:nowrap">⚡ Calculator</button>
+    <button class="btn-sync btn-calc-full" onclick="openCalcModal()" style="white-space:nowrap">⚡ Calculator</button>
     <div class="theme-wrap" id="data-wrap">
       <button class="btn-theme" onclick="toggleDataMenu()" title="Backup &amp; Restore">💾</button>
       <div class="theme-menu" id="data-menu">
@@ -370,7 +451,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
     </div>
     <!-- Cloud Sync -->
     <div class="theme-wrap" id="cloud-wrap">
-      <button class="btn-sync" id="btn-cloud-login" onclick="signInWithGoogle()" title="Sign in to sync across devices" style="gap:5px">☁️ Sign in to Sync</button>
+      <button class="btn-sync" id="btn-cloud-login" onclick="signInWithGoogle()" title="Sign in to sync across devices" style="gap:5px">☁️ <span class="sync-label">Sign in to Sync</span></button>
       <button class="cloud-user-btn" id="cloud-user-info" style="display:none" onclick="toggleCloudMenu()">
         <span class="cloud-dot" id="cloud-dot"></span>
         <img class="cloud-avatar" id="cloud-avatar" src="" alt=""/>
@@ -397,12 +478,12 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <div class="theme-opt" data-theme="light"    onclick="setTheme('light')">   <span class="theme-dot" style="background:#e2e8f0;border:1px solid #cbd5e1"></span>Light</div>
       </div>
     </div>
-    <div style="text-align:right">
+    <div>
       <button class="btn-sync" id="btn-sync" onclick="syncFromDSE()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" id="sync-icon"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-        Sync Latest Price
+        <span class="sync-label">Sync Latest Price</span>
       </button>
-      <div class="sync-status" id="sync-status"></div>
+      <div class="sync-status sync-label" id="sync-status"></div>
     </div>
     <button class="btn-add" onclick="openModal()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
