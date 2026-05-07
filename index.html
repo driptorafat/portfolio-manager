@@ -293,15 +293,15 @@ tbody td{padding:11px 14px;vertical-align:middle}
 .mobile-tab.active{color:var(--accent2)}
 .mobile-tab svg{width:19px;height:19px}
 
-/* ── 1200px — wide tablet / small laptop ── */
+/* ── 1200px — small laptop ── */
 @media(max-width:1200px){
   .dash-row-2{grid-template-columns:1fr}
   .dash-row-4{grid-template-columns:1fr 1fr}
 }
 
-/* ── 1024px — iPad landscape / small laptop ── */
+/* ── 1024px — iPad landscape ── */
 @media(max-width:1024px){
-  .nav-tabs{gap:1px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;max-width:calc(100vw - 340px)}
+  .nav-tabs{gap:1px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;max-width:calc(100vw - 320px)}
   .nav-tabs::-webkit-scrollbar{display:none}
   .nav-tab{padding:6px 10px;font-size:12px}
   .topbar-actions{gap:5px}
@@ -313,71 +313,85 @@ tbody td{padding:11px 14px;vertical-align:middle}
   .summary-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
 }
 
-/* ── 768px — iPad portrait / large phones ── */
+/* ── 768px — iPad mini / small tablet portrait ──
+   Tablet treatment: two-row topbar (logo+actions / nav-tabs), no bottom nav  */
 @media(max-width:768px){
-  /* topbar */
-  .topbar{padding:0 12px;gap:6px;height:56px}
-  .nav-tabs{display:none}
+  /* Two-row topbar: row1 = logo + actions, row2 = nav tabs full width */
+  .topbar{flex-wrap:wrap;height:auto;padding:7px 10px 0;gap:4px;align-items:center}
   .logo-full{display:none}
   .logo-short{display:inline!important}
-  .topbar-actions{gap:4px}
-  /* hide Calculator & label text on mobile; keep icon buttons */
+  .topbar-actions{margin-left:auto;gap:4px;flex-shrink:0}
   .btn-calc-full{display:none}
-  .btn-sync-label{display:none}
-  /* Sync price button: icon only */
+  .btn-sync{padding:6px 8px;font-size:12px}
   #btn-sync .sync-label{display:none}
-  /* Cloud: icon only */
-  #btn-cloud-login{padding:7px 9px;font-size:13px;gap:0}
-  /* Add Trade: shorter */
-  .btn-add{padding:7px 12px;font-size:12px}
-  /* mobile bottom nav */
-  .mobile-nav{display:flex;justify-content:space-around}
-  .container{padding:16px 12px calc(72px + env(safe-area-inset-bottom))}
-  /* grids */
-  .dash-row-2,.dash-row-3,.dash-row-4{grid-template-columns:1fr}
-  .summary-grid{grid-template-columns:repeat(2,1fr);gap:10px}
-  .card{padding:14px 16px}
-  .card-value{font-size:19px}
+  #btn-cloud-login{padding:6px 8px;gap:0}
+  #btn-cloud-login .sync-label{display:none}
+  .btn-add{padding:7px 11px;font-size:12px}
+  .btn-theme{width:32px;height:32px}
+  /* Nav tabs: full width second row */
+  .nav-tabs{order:10;width:calc(100% + 20px);max-width:none;margin:5px -10px 0;padding:5px 10px 6px;border-top:1px solid var(--border);gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .nav-tabs::-webkit-scrollbar{display:none}
+  .nav-tab{padding:5px 10px;font-size:12px}
+  /* layout */
+  .container{padding:16px 14px 24px}
+  .dash-row-2{grid-template-columns:1fr 1fr}
+  .dash-row-3{grid-template-columns:1fr 1fr}
+  .dash-row-4{grid-template-columns:1fr}
+  .dash-holdings-grid{grid-template-columns:1fr!important}
+  .summary-grid{grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:10px}
+  .card{padding:14px 15px}
+  .card-value{font-size:18px}
   /* modals */
-  .modal{width:calc(100vw - 24px);max-width:none;padding:20px 16px;border-radius:14px}
+  .modal{width:calc(100vw - 32px);max-width:none;padding:20px 16px;border-radius:14px}
   .form-row{grid-template-columns:1fr}
   /* filter bar */
   .filter-bar{gap:5px}
-  .search-input{width:100%;margin-left:0;margin-top:4px}
+  .search-input{width:180px}
   /* report config */
   .report-cfg{flex-direction:column;gap:12px}
   .rpt-type-btns{flex-wrap:wrap;gap:5px}
   .rpt-date-row{flex-wrap:wrap}
   .rpt-actions-bar{flex-wrap:wrap}
   .btn-print,.btn-dl{flex:1;justify-content:center}
-  /* table wrap */
-  .table-wrap{border-radius:10px}
-  /* section head */
   .section-head{flex-wrap:wrap;gap:8px}
-  /* report doc */
-  .report-doc-wrap{padding:20px 16px}
+  .report-doc-wrap{padding:20px 14px}
   .rep-kpis{grid-template-columns:1fr 1fr}
+  .rep-header{flex-direction:column;gap:8px}
+}
+
+/* ── 600px — phones ──
+   Phone treatment: hide nav tabs, show bottom nav, icon-only topbar  */
+@media(max-width:600px){
+  .topbar{padding:0 10px;gap:4px;height:52px}
+  .nav-tabs{display:none}
+  .topbar-actions{gap:3px}
+  .btn-add{padding:7px 10px;font-size:12px}
+  /* mobile bottom nav */
+  .mobile-nav{display:flex;justify-content:space-around}
+  .container{padding:12px 10px calc(70px + env(safe-area-inset-bottom))}
+  /* grids go single col on phones */
+  .dash-row-2,.dash-row-3,.dash-row-4{grid-template-columns:1fr}
+  .summary-grid{grid-template-columns:repeat(2,1fr);gap:8px}
+  .card{padding:12px 13px}
+  .card-value{font-size:17px}
+  .card-label{font-size:10px}
+  /* filter bar search full width */
+  .search-input{width:100%;margin-left:0;margin-top:4px}
+  /* report stacking */
+  .rpt-type-btns{flex-direction:column}
+  .rpt-type-btn{text-align:center}
 }
 
 /* ── 480px — small phones ── */
 @media(max-width:480px){
-  .topbar{padding:0 10px;gap:4px;height:52px}
   .logo svg{width:20px;height:20px}
-  .logo span{font-size:13px}
-  /* hide data backup icon label on very small screens */
-  .btn-theme{width:32px;height:32px;font-size:14px}
-  .summary-grid{grid-template-columns:repeat(2,1fr);gap:8px}
-  .card{padding:12px 14px}
-  .card-value{font-size:17px}
-  .card-label{font-size:10px}
+  .btn-theme{font-size:14px}
   .mobile-tab{padding:4px 6px;font-size:9px}
-  /* hide sector pie chart legend on very small screens to save space */
   .performer-sym{font-size:13px}
-  .container{padding:12px 10px calc(68px + env(safe-area-inset-bottom))}
-  /* tables: smaller text */
+  .container{padding:10px 8px calc(68px + env(safe-area-inset-bottom))}
   table{font-size:12px}
-  thead th{padding:9px 10px;font-size:10px}
-  tbody td{padding:9px 10px}
+  thead th{padding:8px 8px;font-size:10px}
+  tbody td{padding:8px 8px}
 }
 
 /* ── WATCHLIST ── */
@@ -424,67 +438,92 @@ tbody td{padding:11px 14px;vertical-align:middle}
   #trading-table-wrap th:nth-child(6),#trading-table-wrap td:nth-child(6),
   #trading-table-wrap th:nth-child(8),#trading-table-wrap td:nth-child(8),
   #trading-table-wrap th:nth-child(11),#trading-table-wrap td:nth-child(11){display:none}
-
   /* Investing: hide Stop Loss(4), %(6), Current Value(9) */
   #investing-table-wrap th:nth-child(4),#investing-table-wrap td:nth-child(4),
   #investing-table-wrap th:nth-child(6),#investing-table-wrap td:nth-child(6),
   #investing-table-wrap th:nth-child(9),#investing-table-wrap td:nth-child(9){display:none}
-
   /* History: hide Sector(5), Notes(9) */
   #history-table-wrap th:nth-child(5),#history-table-wrap td:nth-child(5),
   #history-table-wrap th:nth-child(9),#history-table-wrap td:nth-child(9){display:none}
-
-  /* Watchlist: hide Notes/Reason(6), Added(7) */
+  /* Watchlist: hide Notes(6), Added(7) */
   #watchlist-table-wrap th:nth-child(6),#watchlist-table-wrap td:nth-child(6),
   #watchlist-table-wrap th:nth-child(7),#watchlist-table-wrap td:nth-child(7){display:none}
 }
 
-/* ── Mobile / tablet portrait ≤768px ── */
+/* ── iPad mini / small tablet ≤768px ──
+   Keep nav tabs, show 6-7 columns per table  */
 @media(max-width:768px){
-  /* Trading (12 cols) — keep: Symbol(1) Held(5) Unreal P&L(9) Return%(10)
-     hide: Sector(2) AvgBuy(3) StopLoss(4) Invested(6) MktPrice(7) CurVal(8) RealPnL(11) Status(12) */
+  /* Trading (12): keep Symbol(1) AvgBuy(3) StopLoss(4) Held(5) MktPrice(7) UnrealPnL(9) Return%(10) Status(12)
+     hide: Sector(2) Invested(6) CurVal(8) RealPnL(11) */
   #trading-table-wrap th:nth-child(2),#trading-table-wrap td:nth-child(2),
-  #trading-table-wrap th:nth-child(3),#trading-table-wrap td:nth-child(3),
-  #trading-table-wrap th:nth-child(4),#trading-table-wrap td:nth-child(4),
   #trading-table-wrap th:nth-child(6),#trading-table-wrap td:nth-child(6),
-  #trading-table-wrap th:nth-child(7),#trading-table-wrap td:nth-child(7),
   #trading-table-wrap th:nth-child(8),#trading-table-wrap td:nth-child(8),
-  #trading-table-wrap th:nth-child(11),#trading-table-wrap td:nth-child(11),
-  #trading-table-wrap th:nth-child(12),#trading-table-wrap td:nth-child(12){display:none}
+  #trading-table-wrap th:nth-child(11),#trading-table-wrap td:nth-child(11){display:none}
 
-  /* Investing (11 cols) — keep: Symbol(1) Qty(2) Unreal P&L(10) Return%(11)
-     hide: AvgBuy(3) StopLoss(4) Invested(5) %(6) Sector(7) MktPrice(8) CurVal(9) */
-  #investing-table-wrap th:nth-child(3),#investing-table-wrap td:nth-child(3),
+  /* Investing (11): keep Symbol(1) Qty(2) AvgBuy(3) Invested(5) MktPrice(8) UnrealPnL(10) Return%(11)
+     hide: StopLoss(4) %(6) Sector(7) CurVal(9) */
   #investing-table-wrap th:nth-child(4),#investing-table-wrap td:nth-child(4),
-  #investing-table-wrap th:nth-child(5),#investing-table-wrap td:nth-child(5),
   #investing-table-wrap th:nth-child(6),#investing-table-wrap td:nth-child(6),
   #investing-table-wrap th:nth-child(7),#investing-table-wrap td:nth-child(7),
-  #investing-table-wrap th:nth-child(8),#investing-table-wrap td:nth-child(8),
   #investing-table-wrap th:nth-child(9),#investing-table-wrap td:nth-child(9){display:none}
 
-  /* Dividend (6 cols) — keep: Symbol(1) Type(3) Amount(4) Actions(6)  hide: Date(2) Notes(5) */
-  #dividend-table-wrap th:nth-child(2),#dividend-table-wrap td:nth-child(2),
-  #dividend-table-wrap th:nth-child(5),#dividend-table-wrap td:nth-child(5){display:none}
-
-  /* Watchlist (8 cols) — keep: Symbol(1) MktPrice(3) Gap%(4) Signal(5) Actions(8)
-     hide: Target(2) Notes(6) Added(7) */
-  #watchlist-table-wrap th:nth-child(2),#watchlist-table-wrap td:nth-child(2),
-  #watchlist-table-wrap th:nth-child(6),#watchlist-table-wrap td:nth-child(6),
-  #watchlist-table-wrap th:nth-child(7),#watchlist-table-wrap td:nth-child(7){display:none}
-
-  /* History (10 cols) — keep: Date(1) Type(2) Symbol(4) Qty(6) Total(8) Actions(10)
-     hide: Purpose(3) Sector(5) Price(7) Notes(9) */
-  #history-table-wrap th:nth-child(3),#history-table-wrap td:nth-child(3),
+  /* History (10): keep Date(1) Type(2) Purpose(3) Symbol(4) Qty(6) Total(8) Actions(10)
+     hide: Sector(5) Price(7) Notes(9) */
   #history-table-wrap th:nth-child(5),#history-table-wrap td:nth-child(5),
   #history-table-wrap th:nth-child(7),#history-table-wrap td:nth-child(7),
   #history-table-wrap th:nth-child(9),#history-table-wrap td:nth-child(9){display:none}
 
-  /* Remove min-width on mobile since we now have fewer columns */
+  /* Watchlist (8): keep all except Notes(6) Added(7) — already hidden at ≤1024px */
+  /* Dividend (6): show all columns — fits fine */
+
+  /* Tighten table padding for tablet */
+  #trading-table-wrap thead th,#investing-table-wrap thead th,
+  #dividend-table-wrap thead th,#watchlist-table-wrap thead th,
+  #history-table-wrap thead th{padding:9px 9px;font-size:10.5px;letter-spacing:.3px}
+  #trading-table-wrap tbody td,#investing-table-wrap tbody td,
+  #dividend-table-wrap tbody td,#watchlist-table-wrap tbody td,
+  #history-table-wrap tbody td{padding:10px 9px;font-size:12.5px}
+}
+
+/* ── Phones ≤600px ──
+   Hide most columns, wrap headers, use 4-col layout  */
+@media(max-width:600px){
+  /* Trading: keep Symbol(1) Held(5) UnrealPnL(9) Return%(10) */
+  #trading-table-wrap th:nth-child(3),#trading-table-wrap td:nth-child(3),
+  #trading-table-wrap th:nth-child(4),#trading-table-wrap td:nth-child(4),
+  #trading-table-wrap th:nth-child(5){display:none}
+  /* at ≤600, td:nth-child(5) = Held — we actually want to KEEP Held(5)
+     so re-show it by not hiding it. The cols already hidden at ≤768px stay hidden.
+     Extra hides: StopLoss(4) AvgBuy(3) MktPrice(7) Status(12) */
+  #trading-table-wrap th:nth-child(3),#trading-table-wrap td:nth-child(3),
+  #trading-table-wrap th:nth-child(4),#trading-table-wrap td:nth-child(4),
+  #trading-table-wrap th:nth-child(7),#trading-table-wrap td:nth-child(7),
+  #trading-table-wrap th:nth-child(12),#trading-table-wrap td:nth-child(12){display:none}
+
+  /* Investing: keep Symbol(1) Qty(2) UnrealPnL(10) Return%(11)
+     extra hides: AvgBuy(3) Invested(5) MktPrice(8) */
+  #investing-table-wrap th:nth-child(3),#investing-table-wrap td:nth-child(3),
+  #investing-table-wrap th:nth-child(5),#investing-table-wrap td:nth-child(5),
+  #investing-table-wrap th:nth-child(8),#investing-table-wrap td:nth-child(8){display:none}
+
+  /* Dividend: hide Date(2) Notes(5) */
+  #dividend-table-wrap th:nth-child(2),#dividend-table-wrap td:nth-child(2),
+  #dividend-table-wrap th:nth-child(5),#dividend-table-wrap td:nth-child(5){display:none}
+
+  /* Watchlist: keep Symbol(1) MktPrice(3) Gap%(4) Signal(5) Actions(8)
+     hide Target(2) — Notes/Added already hidden */
+  #watchlist-table-wrap th:nth-child(2),#watchlist-table-wrap td:nth-child(2){display:none}
+
+  /* History: keep Date(1) Type(2) Symbol(4) Qty(6) Total(8) Actions(10)
+     extra hide: Purpose(3) */
+  #history-table-wrap th:nth-child(3),#history-table-wrap td:nth-child(3){display:none}
+
+  /* Remove min-width — fewer columns fit without scrolling */
   #trading-table-wrap table,#investing-table-wrap table,
   #dividend-table-wrap table,#watchlist-table-wrap table,
   #history-table-wrap table{min-width:0}
 
-  /* Allow header text to wrap and tighten padding so columns fit */
+  /* Allow headers to wrap on small screens */
   #trading-table-wrap thead th,#investing-table-wrap thead th,
   #dividend-table-wrap thead th,#watchlist-table-wrap thead th,
   #history-table-wrap thead th{white-space:normal;padding:8px 7px;font-size:10px;letter-spacing:0;line-height:1.3}
@@ -492,12 +531,9 @@ tbody td{padding:11px 14px;vertical-align:middle}
   #dividend-table-wrap tbody td,#watchlist-table-wrap tbody td,
   #history-table-wrap tbody td{padding:9px 7px;font-size:12px}
 
-  /* Reports: stack on mobile */
-  .report-doc-wrap{padding:16px 10px}
+  /* Reports on phone */
+  .report-doc-wrap{padding:14px 8px}
   .rep-kpis{grid-template-columns:1fr 1fr}
-  .rep-header{flex-direction:column;gap:8px}
-  .rpt-type-btns{flex-direction:column}
-  .rpt-type-btn{text-align:center}
 }
 </style>
 <!-- Firebase Compat SDK -->
@@ -592,7 +628,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <div class="chart-inner" id="sector-chart"></div>
       </div>
       <div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
           <div>
             <div class="section-title" style="margin-bottom:10px">Trading Holdings</div>
             <div class="table-wrap" id="dash-trading-table"></div>
