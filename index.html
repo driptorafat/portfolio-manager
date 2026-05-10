@@ -1414,7 +1414,11 @@ async function syncFromDSE(){
     state.lastSync=new Date().toISOString();
     save(); renderInvesting(); render();
     document.getElementById('sync-status').textContent='Last sync: '+new Date(state.lastSync).toLocaleTimeString();
-    toast(`Synced — ${updated} prices · ${sf} sectors`,'success');
+    const allSyms=[...new Set([...getSymbols(),...(state.watchlist||[]).map(w=>w.symbol)])];
+    const missed=allSyms.filter(s=>!state.currentPrices[s]);
+    const missedMsg=missed.length?` · No price for: ${missed.join(', ')}`:'';
+    toast(updated>0?`✅ Synced — ${updated} price${updated>1?'s':''} updated${missedMsg}`:`⚠️ Sync ran but no prices matched your symbols. Check symbol names match DSE exactly (e.g. BEXIMCO, SQURPHARMA).`
+      ,updated>0?'success':'error');
   } catch(e){ toast('Sync failed — check your internet connection and try again. ('+(e.message||'Network error')+')','error'); }
   finally{ isSyncing=false; setLoading(false); }
 }

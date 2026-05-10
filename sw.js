@@ -1,9 +1,9 @@
-const CACHE = 'rafat-portfolio-v1';
-const ASSETS = ['./index.html', './manifest.json', './icon.svg', './icon-maskable.svg'];
+const CACHE = 'rafat-portfolio-v3';
+const STATIC = ['./manifest.json', './icon.svg', './icon-maskable.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(ASSETS))
+    caches.open(CACHE).then(cache => cache.addAll(STATIC))
   );
   self.skipWaiting();
 });
@@ -18,9 +18,26 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Let DSE/proxy requests go straight to network — no caching for live data
-  if (!e.request.url.startsWith(self.location.origin)) return;
+  const url = e.request.url;
 
+  // DSE / proxy / Firebase — always go straight to network
+  if (!url.startsWith(self.location.origin)) return;
+
+  // index.html — network-first so code updates are instant
+  if (url.endsWith('/') || url.includes('index.html') || url === self.location.origin + '/portfolio-manager') {
+    e.respondWith(
+      fetch(e.request).then(response => {
+        if (response && response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE).then(cache => cache.put(e.request, clone));
+        }
+        return response;
+      }).catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  // Everything else — cache-first
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
