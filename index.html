@@ -1059,12 +1059,14 @@ const DSE_CO    = 'https://www.dsebd.org/displayCompany.php?name=';
 
 const PROXIES = [
   u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-  u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
   u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+  u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
   u => `https://thingproxy.freeboard.io/fetch/${u}`,
+  u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
 ];
 
-async function fetchViaProxy(targetUrl, ms=12000) {
+async function fetchViaProxy(targetUrl, ms=15000) {
   let last;
   for (const fn of PROXIES) {
     try {
@@ -1073,7 +1075,11 @@ async function fetchViaProxy(targetUrl, ms=12000) {
       try { res=await fetch(fn(targetUrl),{signal:ctrl.signal}); }
       finally { clearTimeout(tid); }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const txt=await res.text();
+      let txt=await res.text();
+      // allorigins /get returns JSON {contents:'<html>...'}
+      if (txt&&txt.startsWith('{"contents"')) {
+        try { txt=JSON.parse(txt).contents||''; } catch(_){}
+      }
       if (txt&&txt.length>200) return txt;
       throw new Error('Empty response');
     } catch(e){ last=e; }
@@ -1409,7 +1415,7 @@ async function syncFromDSE(){
     save(); renderInvesting(); render();
     document.getElementById('sync-status').textContent='Last sync: '+new Date(state.lastSync).toLocaleTimeString();
     toast(`Synced — ${updated} prices · ${sf} sectors`,'success');
-  } catch(e){ toast('Sync failed: '+(e.message||'Network error'),'error'); }
+  } catch(e){ toast('Sync failed — check your internet connection and try again. ('+(e.message||'Network error')+')','error'); }
   finally{ isSyncing=false; setLoading(false); }
 }
 function parsePrices(html){
@@ -1430,12 +1436,16 @@ function parsePrices(html){
   });
   let count=0;
   const allSyms=[...new Set([...getSymbols(),...(state.watchlist||[]).map(w=>w.symbol)])];
-  allSyms.forEach(s=>{if(map[s]>0){state.currentPrices[s]=map[s];count++;}});
+  allSyms.forEach(s=>{
+    // Case-insensitive lookup — DSE symbols are uppercase; user may have typed mixed/lower case
+    const price=map[s]||map[s.toUpperCase()];
+    if(price>0){state.currentPrices[s]=price;count++;}
+  });
   return count;
 }
 async function fetchOneSector(symbol){
   try {
-    const html=await fetchViaProxy(DSE_CO+symbol,12000);
+    const html=await fetchViaProxy(DSE_CO+symbol.toUpperCase(),15000);
     const doc=new DOMParser().parseFromString(html,'text/html');
     const cells=doc.querySelectorAll('td');
     for(let i=0;i<cells.length-1;i++){
