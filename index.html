@@ -1406,7 +1406,7 @@ async function syncFromDSE(){
   isSyncing=true; setLoading(true); toast('Fetching latest prices…','info');
   try {
     const html=await fetchViaProxy(DSE_PRICE,15000);
-    const updated=parsePrices(html);
+    const {updated,matched,notFound}=parsePrices(html);
     const missing=getSymbols().filter(s=>!state.sectorMap[s]);
     let sf=0;
     for(const sym of missing){
@@ -1416,13 +1416,23 @@ async function syncFromDSE(){
     state.lastSync=new Date().toISOString();
     save(); renderInvesting(); render();
     document.getElementById('sync-status').textContent='Last sync: '+new Date(state.lastSync).toLocaleTimeString();
-    const allSyms=[...new Set([...getSymbols(),...(state.watchlist||[]).map(w=>w.symbol)])];
-    const missed=allSyms.filter(s=>!state.currentPrices[s]);
-    const missedMsg=missed.length?` · No price for: ${missed.join(', ')}`:'';
-    toast(updated>0?`✅ Synced — ${updated} price${updated>1?'s':''} updated${missedMsg}`:`⚠️ Sync ran but no prices matched your symbols. Check symbol names match DSE exactly (e.g. BEXIMCO, SQURPHARMA).`
-      ,updated>0?'success':'error');
-  } catch(e){ toast('Sync failed — check your internet connection and try again. ('+(e.message||'Network error')+')','error'); }
+    if(updated>0){
+      const missedMsg=notFound.length?`\n⚠️ Not found in DSE: ${notFound.join(', ')}`:'';
+      toast(`✅ ${updated} price${updated>1?'s':''} updated${matched.map(m=>`\n• ${m.sym}: ৳${m.price}`).join('')}${missedMsg}`,'success');
+    } else {
+      showSyncError(notFound);
+    }
+  } catch(e){
+    toast(`❌ Sync failed: ${e.message||'Network error'}\nCheck internet connection and try again.`,'error');
+  }
   finally{ isSyncing=false; setLoading(false); }
+}
+
+function showSyncError(notFound){
+  const msg=notFound.length
+    ?`Sync connected to DSE but none of your symbols matched.\n\nYour symbols: ${notFound.join(', ')}\n\nDSE uses short trading codes — check examples:\n• Square Pharma → SQURPHARMA\n• Grameenphone → GP\n• BRAC Bank → BRACBANK\n• Dutch Bangla Bank → DUTCHBANGL\n\nEnter the correct DSE trading code when adding a trade.`
+    :`No stocks found. Add trades first, then sync.`;
+  alert(msg);
 }
 function parsePrices(html){
   const doc=new DOMParser().parseFromString(html,'text/html');
@@ -1440,14 +1450,14 @@ function parsePrices(html){
       if(s.length>=2&&s.length<=20&&/^[A-Z0-9]+$/.test(s)&&!isNaN(p)&&p>0){map[s]=p;break;}
     }
   });
-  let count=0;
   const allSyms=[...new Set([...getSymbols(),...(state.watchlist||[]).map(w=>w.symbol)])];
+  const matched=[],notFound=[];
   allSyms.forEach(s=>{
-    // Case-insensitive lookup — DSE symbols are uppercase; user may have typed mixed/lower case
     const price=map[s]||map[s.toUpperCase()];
-    if(price>0){state.currentPrices[s]=price;count++;}
+    if(price>0){state.currentPrices[s]=price;matched.push({sym:s,price});}
+    else notFound.push(s);
   });
-  return count;
+  return{updated:matched.length,matched,notFound};
 }
 async function fetchOneSector(symbol){
   try {
