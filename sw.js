@@ -1,4 +1,9 @@
-const CACHE = 'rafat-portfolio-v3';
+const CACHE = 'rafat-portfolio-v4';
+
+// Allow page to force-activate a waiting SW immediately
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
 const STATIC = ['./manifest.json', './icon.svg', './icon-maskable.svg'];
 
 self.addEventListener('install', e => {

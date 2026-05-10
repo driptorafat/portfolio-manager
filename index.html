@@ -569,6 +569,8 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <div class="theme-opt" onclick="exportData()">⬇️&nbsp; Export Backup</div>
         <div class="theme-opt" onclick="importData()">⬆️&nbsp; Import Backup</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
+        <div class="theme-opt" onclick="hardRefresh()">🔄&nbsp; Clear Cache &amp; Reload</div>
+        <div style="height:1px;background:var(--border);margin:4px 6px"></div>
         <div class="theme-opt" onclick="clearAllData()" style="color:var(--red)">🗑️&nbsp; Clear All Data</div>
       </div>
     </div>
@@ -2866,12 +2868,39 @@ if(state.lastSync)document.getElementById('sync-status').textContent='Last sync:
 // ── Auto-init Firebase (restores auth session if previously signed in) ──
 window.addEventListener('load',()=>initFirebase());
 
+// ── Hard refresh helper (clears SW cache + reloads fresh) ──
+async function hardRefresh(){
+  try{
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      for(const r of regs) await r.unregister();
+    }
+    const keys=await caches.keys();
+    for(const k of keys) await caches.delete(k);
+  }catch(_){}
+  location.reload(true);
+}
+
 // ── PWA Service Worker (only over HTTP/S, not file://) ──
 if('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js')
-      .then(()=>console.log('SW registered'))
+      .then(reg=>{
+        // Force check for SW updates on every page load
+        reg.update();
+        // If a new SW is waiting, activate it immediately
+        if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
+        reg.addEventListener('updatefound',()=>{
+          const nw=reg.installing;
+          if(nw) nw.addEventListener('statechange',()=>{
+            if(nw.state==='installed'&&navigator.serviceWorker.controller)
+              reg.waiting&&reg.waiting.postMessage({type:'SKIP_WAITING'});
+          });
+        });
+      })
       .catch(()=>{});
+    // Reload when a new SW takes over so the fresh code runs
+    navigator.serviceWorker.addEventListener('controllerchange',()=>location.reload());
   });
 }
 </script>
