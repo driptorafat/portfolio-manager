@@ -286,6 +286,8 @@ tbody td{padding:11px 14px;vertical-align:middle}
 /* ── TABLES — always scrollable ── */
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .table-wrap table{min-width:600px}
+/* Dashboard mini-tables don't need the full min-width */
+#dash-trading-table table,#dash-investing-table table{min-width:0;width:100%}
 
 /* ── MOBILE NAV ── */
 .mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:6px 0 max(10px,env(safe-area-inset-bottom));z-index:100}
