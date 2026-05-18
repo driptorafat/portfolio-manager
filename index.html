@@ -1058,8 +1058,9 @@ tbody td{padding:11px 14px;vertical-align:middle}
 
 <script>
 // ─── PROXY WATERFALL ──────────────────────────────────────────────────────────
-const DSE_PRICE = 'https://www.dsebd.org/latest_share_price_scroll_l.php';
-const DSE_CO    = 'https://www.dsebd.org/displayCompany.php?name=';
+const DSE_PRICE  = 'https://www.dsebd.org/latest_share_price_scroll_l.php';
+const DSE_CLOSE  = 'https://www.dsebd.org/dse_close_price.php';
+const DSE_CO     = 'https://www.dsebd.org/displayCompany.php?name=';
 
 const PROXIES = [
   u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
@@ -1407,8 +1408,17 @@ async function syncFromDSE(){
   if(isSyncing)return;
   isSyncing=true; setLoading(true); toast('Fetching latest prices…','info');
   try {
-    const html=await fetchViaProxy(DSE_PRICE,15000);
-    const {updated,matched,notFound}=parsePrices(html);
+    // Try live prices first; if market closed (all zeros), fall back to last close
+    let html=await fetchViaProxy(DSE_PRICE,15000);
+    let {updated,matched,notFound}=parsePrices(html);
+    let priceLabel='live';
+    if(updated===0){
+      // Market closed — fetch last closing prices instead
+      toast('Market closed — fetching last closing prices…','info');
+      html=await fetchViaProxy(DSE_CLOSE,15000);
+      ({updated,matched,notFound}=parsePrices(html));
+      priceLabel='close';
+    }
     const missing=getSymbols().filter(s=>!state.sectorMap[s]);
     let sf=0;
     for(const sym of missing){
@@ -1417,10 +1427,11 @@ async function syncFromDSE(){
     }
     state.lastSync=new Date().toISOString();
     save(); renderInvesting(); render();
-    document.getElementById('sync-status').textContent='Last sync: '+new Date(state.lastSync).toLocaleTimeString();
+    const label=priceLabel==='close'?'Last close':'Live';
+    document.getElementById('sync-status').textContent=`${label} prices · ${new Date(state.lastSync).toLocaleTimeString()}`;
     if(updated>0){
-      const missedMsg=notFound.length?`\n⚠️ Not found in DSE: ${notFound.join(', ')}`:'';
-      toast(`✅ ${updated} price${updated>1?'s':''} updated${matched.map(m=>`\n• ${m.sym}: ৳${m.price}`).join('')}${missedMsg}`,'success');
+      const missedMsg=notFound.length?`\n⚠️ Not found: ${notFound.join(', ')}`:'';
+      toast(`✅ ${updated} ${label.toLowerCase()} price${updated>1?'s':''} updated${matched.map(m=>`\n• ${m.sym}: ৳${m.price}`).join('')}${missedMsg}`,'success');
     } else {
       showSyncError(notFound);
     }
