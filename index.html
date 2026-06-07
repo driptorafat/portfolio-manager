@@ -295,27 +295,24 @@ tbody td{padding:11px 14px;vertical-align:middle}
 .mobile-tab.active{color:var(--accent2)}
 .mobile-tab svg{width:19px;height:19px}
 
-/* ── 1440px — MacBook Air M1 (1440×900 native CSS pixels) ── */
+/* ── 1440px — MacBook Air M1 default (1440×900) ──
+   Hide all button text labels; keep icons only so everything fits in one row */
 @media(max-width:1440px){
-  .topbar{gap:6px;padding:0 16px}
-  .nav-tab{padding:6px 10px;font-size:12px}
-  .topbar-actions{gap:5px}
-  .btn-sync{padding:6px 10px;font-size:12px}
-}
-
-/* ── 1300px — MacBook Air M1 at scaled / 1280 wide ── */
-@media(max-width:1300px){
-  /* Collapse text labels — keep only icons */
+  .topbar{gap:5px;padding:0 14px}
+  .topbar-actions{gap:4px}
+  .btn-sync{padding:6px 9px;font-size:12px}
+  /* Collapse every text label — icon-only action buttons */
   #portfolio-label{display:none!important}
   #portfolio-btn{padding:6px 8px}
   .calc-label{display:none}
-  .btn-calc-full{padding:6px 10px}
+  .btn-calc-full{padding:6px 9px}
   #btn-sync .sync-label{display:none}
-  #btn-cloud-login .sync-label{display:none}
-  /* Shrink nav tabs to fit */
-  .nav-tabs{max-width:calc(100vw - 340px);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  #btn-cloud-login span{display:none}
+  #btn-cloud-login{padding:6px 8px;gap:0}
+  /* Nav tabs: slight compression + horizontal scroll safety */
+  .nav-tab{padding:6px 10px;font-size:12px}
+  .nav-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
   .nav-tabs::-webkit-scrollbar{display:none}
-  .nav-tab{padding:5px 9px;font-size:12px}
   .logo-full{font-size:15px}
 }
 
