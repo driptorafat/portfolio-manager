@@ -557,6 +557,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <button class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</button>
     <button class="nav-tab" onclick="switchTab('trading')">Trading</button>
     <button class="nav-tab" onclick="switchTab('investing')">Investing</button>
+    <button class="nav-tab" onclick="switchTab('dividends')">💰 Dividends</button>
     <button class="nav-tab" onclick="switchTab('history')">History</button>
     <button class="nav-tab" onclick="switchTab('watchlist')">👁 Watchlist</button>
     <button class="nav-tab" onclick="switchTab('reports')">📄 Reports</button>
@@ -708,7 +709,10 @@ tbody td{padding:11px 14px;vertical-align:middle}
   <!-- ══ INVESTING ══ -->
   <div id="page-investing" class="page">
     <div class="summary-grid" id="invest-summary"></div>
-    <div class="section-head"><div class="section-title">Investment Portfolio</div></div>
+    <div class="section-head">
+      <div class="section-title">Investment Portfolio</div>
+      <button class="btn-secondary" style="font-size:12px;padding:6px 14px;background:rgba(99,102,241,.12);color:var(--accent2);border:1px solid rgba(99,102,241,.25);border-radius:8px;cursor:pointer" onclick="switchTab('dividends')">💰 View Dividends →</button>
+    </div>
     <div class="table-wrap" id="investing-table-wrap">
       <table>
         <thead><tr>
@@ -718,17 +722,40 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <tbody id="investing-tbody"></tbody>
       </table>
     </div>
-    <div class="section-head" style="margin-top:24px;margin-bottom:10px">
-      <div class="section-title">💰 Dividend Income</div>
+  </div>
+
+  <!-- ══ DIVIDENDS ══ -->
+  <div id="page-dividends" class="page">
+    <div class="summary-grid" id="div-page-summary"></div>
+
+    <div class="section-head">
+      <div>
+        <div class="section-title">💰 Dividend Income by Stock</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">Per-symbol breakdown — effective avg buy = (cost − cash dividends) ÷ (shares + bonus)</div>
+      </div>
       <button class="btn-add" style="font-size:12px;padding:6px 14px" onclick="openDivModal()">+ Add Dividend</button>
     </div>
-    <div id="div-summary-bar"></div>
-    <div class="table-wrap" id="dividend-table-wrap">
+    <div class="table-wrap" id="div-per-symbol-wrap">
+      <table>
+        <thead><tr>
+          <th>Symbol</th><th>Original Qty</th><th>Bonus Shares</th><th>Total Qty</th>
+          <th>Cash Income</th><th>Cash / Share</th><th>Eff. Avg Buy</th>
+          <th>Market Price</th><th>Adj. Value</th><th>Div Yield</th>
+        </tr></thead>
+        <tbody id="div-per-symbol-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="section-head" style="margin-top:28px;margin-bottom:10px">
+      <div class="section-title">📋 Dividend History</div>
+    </div>
+    <div id="div-page-summary-bar"></div>
+    <div class="table-wrap" id="div-history-wrap">
       <table>
         <thead><tr>
           <th>Symbol</th><th>Date</th><th>Type</th><th>Amount / Shares</th><th>Notes</th><th style="width:60px"></th>
         </tr></thead>
-        <tbody id="dividend-tbody"></tbody>
+        <tbody id="div-history-tbody"></tbody>
       </table>
     </div>
   </div>
@@ -820,6 +847,10 @@ tbody td{padding:11px 14px;vertical-align:middle}
   <button class="mobile-tab" onclick="switchTab('investing')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
     Invest
+  </button>
+  <button class="mobile-tab" onclick="switchTab('dividends')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    Divs
   </button>
   <button class="mobile-tab" onclick="switchTab('history')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></svg>
@@ -1299,7 +1330,7 @@ function switchTab(tab) {
   currentTab=tab;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+tab).classList.add('active');
-  const tabs=['dashboard','trading','investing','history','watchlist','reports'];
+  const tabs=['dashboard','trading','investing','dividends','history','watchlist','reports'];
   document.querySelectorAll('.nav-tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('.mobile-tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   render();
@@ -1594,6 +1625,7 @@ function render(){
   if(currentTab==='dashboard')  renderDashboard();
   if(currentTab==='trading')    renderTrading();
   if(currentTab==='investing')  renderInvesting();
+  if(currentTab==='dividends')  renderDividends();
   if(currentTab==='history')    renderHistory();
   if(currentTab==='watchlist')  renderWatchlist();
 }
@@ -1772,9 +1804,8 @@ function renderDashboard(){
     const ds  = getDivStats(sym);
     const cp  = state.currentPrices[sym]||0;
     const adjQty  = d.heldQty + ds.totalBonusShares;
-    const netCost = Math.max(0, d.heldCost - ds.totalCashAmount);
-    // Div-adjusted unrealized: current value of all shares vs net cost
-    const adjUpnl = cp ? adjQty*cp - netCost : null;
+    // Unrealized P&L: (all shares incl. bonus) × price vs actual cost paid
+    const adjUpnl = cp ? adjQty*cp - d.heldCost : null;
     const retPct  = adjUpnl!==null && d.heldCost>0 ? adjUpnl/d.heldCost*100 : null;
     const divTags = [];
     if(ds.totalCashAmount>0)  divTags.push(`<span style="color:var(--green);font-size:9px;font-weight:700">💵${fmt(ds.totalCashAmount)}</span>`);
@@ -1923,25 +1954,15 @@ function renderTrading(){
     const retPct=upnl!==null&&d.heldCost>0?upnl/d.heldCost*100:null;
     const priceAuto=cp?`<span class="price-auto">DSE ✓</span>`:'';
     const sec=state.sectorMap[sym]||''; const sc=sec?getSectorColor(sec,0):'var(--border)';
-    // Stop loss — use dividend-adjusted avg of the HELD position
-    // For open trades: held position netCost÷adjQty gives the true effective cost
-    const dsT = getDivStats(sym);
-    const adjQtyT  = d.heldQty + dsT.totalBonusShares;
-    const netCostT = Math.max(0, d.heldCost - dsT.totalCashAmount);
-    // adjAvgT = effective cost/share of held position (accounts for both cash & bonus)
-    const adjAvgT  = open && adjQtyT>0 ? netCostT/adjQtyT : (d.avgBuyAll||0);
-    const avgT     = adjAvgT || d.avgBuyAll || 0;
+    // Stop loss based on actual avg buy (no dividend adjustment)
+    const avgT = d.avgBuyAll || 0;
     const slT=(state.stopLoss||{})[sym]!=null?(state.stopLoss||{})[sym]:avgT?+(avgT*0.92).toFixed(2):0;
     const slStatT=open&&cp&&slT&&avgT?(cp<=slT?'hit':cp<=avgT*0.94?'warn':'safe'):'';
-    // Avg buy display — show raw avg, with adj note if applicable
-    const avgSubsT=[];
-    if(open && dsT.totalCashAmount>0)  avgSubsT.push(`<span style="color:var(--green)">−৳${dsT.totalCashAmount.toFixed(2)} cash</span>`);
-    if(open && dsT.totalBonusShares>0) avgSubsT.push(`<span style="color:var(--accent2)">+${dsT.totalBonusShares} bonus</span>`);
     return`<tr>
       <td><div class="sym">${sym}</div><div class="name-sub">${getSymbolName(sym)}</div></td>
       <td><div class="sector-cell"><span class="sector-dot" style="background:${sc};display:${sec?'inline-block':'none'}"></span>
         <input class="sector-input" value="${sec}" placeholder="Enter sector…" onchange="updateSector('${sym}',this.value)" onblur="updateSector('${sym}',this.value)"/></div></td>
-      <td>${d.avgBuyAll>0?`${fmt(d.avgBuyAll)}${avgSubsT.length?`<div style="font-size:10px;margin-top:2px">${avgSubsT.join(' ')}</div>`:''}`:''}</td>
+      <td>${d.avgBuyAll>0?fmt(d.avgBuyAll):''}</td>
       <td><div style="display:flex;align-items:center;gap:5px">
         <input class="price-input" value="${slT>0?slT:''}" placeholder="—"
           style="${slStatT==='hit'?'border-color:var(--red);color:var(--red)':slStatT==='warn'?'border-color:var(--yellow)':''}"
@@ -1970,36 +1991,29 @@ function renderInvesting(){
   syms.forEach(sym=>{
     const d=calcPnL(sym,'investing'); if(d.heldQty<=0)return;
     const cp=state.currentPrices[sym]||0;
-    const curVal=cp?d.heldQty*cp:null;
+    const ds=getDivStats(sym);
+    const adjQtySumm=d.heldQty+ds.totalBonusShares;
+    const curVal=cp?adjQtySumm*cp:null;
     const upnl=cp?curVal-d.heldCost:null;
-    const retPct=upnl!==null&&d.heldCost>0?upnl/d.heldCost*100:null;
     totInv+=d.heldCost;
     if(curVal!==null){totVal+=curVal;totUPnL+=upnl;}
-    holdings.push({sym,d,cp,curVal,upnl,retPct});
+    holdings.push({sym,d,cp});
   });
   const rows=holdings.map(({sym,d,cp})=>{
     const ds = getDivStats(sym);
-    // ── Dividend-adjusted position values ──────────────────────────────────────
-    // netCost: actual capital still at risk after cash dividends returned
-    // adjQty:  true share count including bonus shares received
-    // adjAvg:  effective cost per share = netCost ÷ adjQty  (the ONLY correct formula)
+    // adjQty = original shares + bonus shares received (correct total share count)
     const adjQty  = d.heldQty + ds.totalBonusShares;
-    const netCost = Math.max(0, d.heldCost - ds.totalCashAmount);
-    const adjAvg  = adjQty > 0 ? netCost / adjQty : d.avgBuy;
+    // Current value uses all shares (incl. bonus); P&L vs actual cost paid
     const adjVal  = cp ? adjQty * cp : null;
-    const adjUpnl = adjVal !== null ? adjVal - netCost : null;
-    const adjRet  = adjUpnl !== null && netCost > 0 ? adjUpnl / netCost * 100 : null;
+    const adjUpnl = adjVal !== null ? adjVal - d.heldCost : null;
+    const adjRet  = adjUpnl !== null && d.heldCost > 0 ? adjUpnl / d.heldCost * 100 : null;
     const costPct = totInv > 0 ? (d.heldCost / totInv) * 100 : 0;
     const sec = state.sectorMap[sym]||''; const sc = sec ? getSectorColor(sec,0) : 'var(--border)';
     const priceAuto = state.currentPrices[sym] ? `<span class="price-auto">DSE ✓</span>` : '';
     const divMark = ds.count > 0
-      ? `<span style="font-size:10px;background:rgba(34,197,94,.15);color:var(--green);padding:2px 6px;border-radius:4px;font-weight:700;white-space:nowrap">💰 Div</span>` : '';
-    // Sub-labels explaining the adjustment
-    const avgSubs = [];
-    if(ds.totalCashAmount>0)  avgSubs.push(`<span style="color:var(--green)">−৳${ds.totalCashAmount.toFixed(2)} cash</span>`);
-    if(ds.totalBonusShares>0) avgSubs.push(`<span style="color:var(--accent2)">+${ds.totalBonusShares} bonus</span>`);
-    // Stop loss — based on dividend-adjusted avg buy (adjAvg)
-    const avgI = adjAvg > 0 ? adjAvg : (d.avgBuy > 0 ? d.avgBuy : 0);
+      ? `<span style="font-size:10px;background:rgba(34,197,94,.15);color:var(--green);padding:2px 6px;border-radius:4px;font-weight:700;white-space:nowrap;cursor:pointer" onclick="switchTab('dividends')" title="View dividend details">💰 Div ↗</span>` : '';
+    // Stop loss based on actual avg buy price (no dividend adjustment)
+    const avgI = d.avgBuy > 0 ? d.avgBuy : 0;
     const slI  = (state.stopLoss||{})[sym]!=null ? (state.stopLoss||{})[sym] : avgI ? +(avgI*0.92).toFixed(2) : 0;
     const slStatI = cp && slI && avgI ? (cp<=slI?'hit':cp<=avgI*0.94?'warn':'safe') : '';
     return`<tr>
@@ -2008,10 +2022,7 @@ function renderInvesting(){
         <strong>${adjQty}</strong>
         ${ds.totalBonusShares>0?`<div style="font-size:10px;color:var(--accent2);margin-top:2px">+${ds.totalBonusShares} bonus</div>`:''}
       </td>
-      <td>
-        ${fmt(adjAvg)}
-        ${avgSubs.length>0?`<div style="font-size:10px;margin-top:2px">${avgSubs.join(' ')}</div>`:''}
-      </td>
+      <td>${fmt(d.avgBuy)}</td>
       <td><div style="display:flex;align-items:center;gap:5px">
         <input class="price-input" value="${slI>0?slI:''}" placeholder="—"
           style="${slStatI==='hit'?'border-color:var(--red);color:var(--red)':slStatI==='warn'?'border-color:var(--yellow)':''}"
@@ -2032,13 +2043,11 @@ function renderInvesting(){
   }).join('');
 
   const divs = state.dividends || [];
-  // Total cash income (new + old format)
   const totDivIncome = divs.reduce((s,d)=>{
     if(d.cashAmount!=null) return s+(d.cashAmount||0);
     if(d.type==='cash')    return s+(d.amount||0);
     return s;
   }, 0);
-  // Total bonus shares
   const totBonusShares = divs.reduce((s,d)=>{
     if(d.bonusShares!=null) return s+(d.bonusShares||0);
     if(d.type==='bonus')    return s+(d.amount||0);
@@ -2047,32 +2056,85 @@ function renderInvesting(){
   document.getElementById('invest-summary').innerHTML=
     card('Positions',String(holdings.length),'','Active investment holdings','📋')+
     card('Total Invested',fmt(totInv),'','Cost basis','💰')+
-    card('Current Value',totVal?fmt(totVal):'—','','Based on market prices','💎')+
-    card('Unrealized P&L',totUPnL?fmtPnl(totUPnL):'—',totUPnL>0?'green':totUPnL<0?'red':'','vs cost basis','📈')+
-    card('Cash Dividend',totDivIncome?fmt(totDivIncome):'৳0.00','green','Total cash dividends received','💵')+
-    card('Bonus Shares',totBonusShares?String(totBonusShares):'0','','Total bonus shares received','🎁');
+    card('Current Value',totVal?fmt(totVal):'—','','Incl. bonus shares at market price','💎')+
+    card('Unrealized P&L',totUPnL?fmtPnl(totUPnL):'—',totUPnL>0?'green':totUPnL<0?'red':'','Bonus shares value vs cost paid','📈')+
+    card('Cash Dividend',totDivIncome?fmt(totDivIncome):'৳0.00','green','See Dividends tab for details','💵')+
+    card('Bonus Shares',totBonusShares?String(totBonusShares)+' shares':'0 shares','','See Dividends tab for details','🎁');
   document.getElementById('investing-tbody').innerHTML=rows||emptyRow(11,'No investment holdings. Add a buy tagged as 📈 Investing.');
+}
 
-  // Dividend table — combined rows
-  const divRows = [...divs].sort((a,b)=>b.date.localeCompare(a.date)).map(d=>{
-    // Resolve values for both old and new format
-    const cashAmt    = d.cashAmount!=null ? d.cashAmount : (d.type==='cash'  ? d.amount||0 : 0);
-    const bonusSh    = d.bonusShares!=null? d.bonusShares: (d.type==='bonus' ? d.amount||0 : 0);
-    const hasCash    = cashAmt   > 0;
-    const hasBonus   = bonusSh   > 0;
-    const cashPct    = d.cashPct  || (d.type==='cash'  ? d.pct||0 : 0);
-    const bonusPct   = d.bonusPct || (d.type==='bonus' ? d.pct||0 : 0);
-    let typeBadge, amtCell;
-    if(hasCash && hasBonus){
-      typeBadge = `<span class="div-badge" style="background:rgba(99,102,241,.15);color:var(--accent2)">💵+🎁 Both</span>`;
-      amtCell   = `<div style="font-size:12px"><span style="color:var(--green)">${fmt(cashAmt)}</span>${cashPct?` <span style="color:var(--muted)">(${cashPct}%)</span>`:''}</div>
-                   <div style="font-size:12px"><span style="color:var(--accent2)">${bonusSh} shares</span>${bonusPct?` <span style="color:var(--muted)">(${bonusPct}%)</span>`:''}</div>`;
-    } else if(hasCash){
-      typeBadge = `<span class="div-badge div-cash">💵 Cash</span>`;
-      amtCell   = `<span style="color:var(--green)">${fmt(cashAmt)}</span>${cashPct?` <span style="color:var(--muted);font-size:11px">(${cashPct}%)</span>`:''}`;
-    } else {
-      typeBadge = `<span class="div-badge div-bonus">🎁 Bonus</span>`;
-      amtCell   = `<span style="color:var(--accent2)">${bonusSh} shares</span>${bonusPct?` <span style="color:var(--muted);font-size:11px">(${bonusPct}%)</span>`:''}`;
+// ─── DIVIDENDS TAB ────────────────────────────────────────────────────────────
+function renderDividends(){
+  const syms=getSymbols();
+  const divs=state.dividends||[];
+  let totCashIncome=0,totBonusShares=0,totBonusValue=0,totOrigCost=0;
+
+  // Per-symbol rows (only symbols that have dividends)
+  const symRows=syms.map(sym=>{
+    const ds=getDivStats(sym);
+    if(ds.count===0) return null;
+    const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
+    const heldQty=inv.heldQty+trd.heldQty;
+    const heldCost=inv.heldCost+trd.heldCost;
+    const cp=state.currentPrices[sym]||0;
+    const adjQty=heldQty+ds.totalBonusShares;
+    const netCost=Math.max(0,heldCost-ds.totalCashAmount);
+    const effAvgBuy=adjQty>0?netCost/adjQty:0;
+    const adjVal=cp?adjQty*cp:null;
+    const cashPerShareAvg=heldQty>0?ds.totalCashAmount/heldQty:0;
+    const divYield=heldCost>0?(ds.totalCashAmount/heldCost)*100:0;
+
+    totCashIncome+=ds.totalCashAmount;
+    totBonusShares+=ds.totalBonusShares;
+    if(cp) totBonusValue+=ds.totalBonusShares*cp;
+    if(heldQty>0) totOrigCost+=heldCost;
+
+    const rawAvgBuy=heldQty>0?heldCost/heldQty:0;
+    return`<tr>
+      <td><div class="sym">${sym}</div><div class="name-sub">${getSymbolName(sym)}</div></td>
+      <td>${heldQty}</td>
+      <td style="color:var(--accent2)">${ds.totalBonusShares>0?'+'+ds.totalBonusShares:'—'}</td>
+      <td><strong>${adjQty}</strong></td>
+      <td style="color:var(--green)">${ds.totalCashAmount>0?fmt(ds.totalCashAmount):'—'}</td>
+      <td style="color:var(--green);font-size:12px">${cashPerShareAvg>0?fmt(cashPerShareAvg)+'/sh':'—'}</td>
+      <td>
+        ${effAvgBuy>0?fmt(effAvgBuy):'—'}
+        ${rawAvgBuy>0?`<div style="font-size:10px;color:var(--muted);margin-top:2px">raw: ${fmt(rawAvgBuy)}</div>`:''}
+      </td>
+      <td>${cp?fmt(cp):'—'}</td>
+      <td>${adjVal!==null?fmt(adjVal):'—'}</td>
+      <td style="color:var(--green)">${divYield>0?divYield.toFixed(2)+'%':'—'}</td>
+    </tr>`;
+  }).filter(Boolean).join('');
+
+  // Summary cards
+  const totDivReturn=totOrigCost>0?(totCashIncome+totBonusValue)/totOrigCost*100:0;
+  document.getElementById('div-page-summary').innerHTML=
+    card('Cash Income',totCashIncome?fmt(totCashIncome):'৳0.00','green','Total cash dividends received','💵')+
+    card('Bonus Shares',totBonusShares?String(totBonusShares)+' shares':'0 shares',totBonusShares>0?'green':'','Total bonus shares received','🎁')+
+    card('Bonus Market Value',totBonusValue?fmt(totBonusValue):'—',totBonusValue>0?'green':'','Current value of bonus shares','📈')+
+    card('Dividend Return',totDivReturn?'+'+totDivReturn.toFixed(2)+'%':'—','green','(Cash + Bonus value) ÷ Cost','🏆');
+
+  document.getElementById('div-per-symbol-tbody').innerHTML=symRows||emptyRow(10,'No dividend records yet — click "+ Add Dividend" to log one.');
+
+  // Full dividend history log
+  const divRows=[...divs].sort((a,b)=>b.date.localeCompare(a.date)).map(d=>{
+    const cashAmt=d.cashAmount!=null?d.cashAmount:(d.type==='cash'?d.amount||0:0);
+    const bonusSh=d.bonusShares!=null?d.bonusShares:(d.type==='bonus'?d.amount||0:0);
+    const hasCash=cashAmt>0, hasBonus=bonusSh>0;
+    const cashPct=d.cashPct||(d.type==='cash'?d.pct||0:0);
+    const bonusPct=d.bonusPct||(d.type==='bonus'?d.pct||0:0);
+    let typeBadge,amtCell;
+    if(hasCash&&hasBonus){
+      typeBadge=`<span class="div-badge" style="background:rgba(99,102,241,.15);color:var(--accent2)">💵+🎁 Both</span>`;
+      amtCell=`<div style="font-size:12px"><span style="color:var(--green)">${fmt(cashAmt)}</span>${cashPct?` <span style="color:var(--muted)">(${cashPct}%)</span>`:''}</div>
+               <div style="font-size:12px"><span style="color:var(--accent2)">${bonusSh} shares</span>${bonusPct?` <span style="color:var(--muted)">(${bonusPct}%)</span>`:''}</div>`;
+    }else if(hasCash){
+      typeBadge=`<span class="div-badge div-cash">💵 Cash</span>`;
+      amtCell=`<span style="color:var(--green)">${fmt(cashAmt)}</span>${cashPct?` <span style="color:var(--muted);font-size:11px">(${cashPct}%)</span>`:''}`;
+    }else{
+      typeBadge=`<span class="div-badge div-bonus">🎁 Bonus</span>`;
+      amtCell=`<span style="color:var(--accent2)">${bonusSh} shares</span>${bonusPct?` <span style="color:var(--muted);font-size:11px">(${bonusPct}%)</span>`:''}`;
     }
     return`<tr>
       <td><div class="sym">${d.symbol}</div></td>
@@ -2083,9 +2145,9 @@ function renderInvesting(){
       <td><button class="btn-icon" onclick="removeDividend(${d.id})">✕</button></td>
     </tr>`;
   }).join('');
-  document.getElementById('div-summary-bar').innerHTML = (totDivIncome||totBonusShares)
-    ? `<div class="div-summary">💵 Total cash income: ${fmt(totDivIncome)}&nbsp;&nbsp;|&nbsp;&nbsp;🎁 Total bonus shares: ${totBonusShares}</div>` : '';
-  document.getElementById('dividend-tbody').innerHTML = divRows || emptyRow(6,'No dividends recorded yet — click "+ Add Dividend" to log one');
+  document.getElementById('div-page-summary-bar').innerHTML=(totCashIncome||totBonusShares)
+    ?`<div class="div-summary">💵 Total cash income: ${fmt(totCashIncome)}&nbsp;&nbsp;|&nbsp;&nbsp;🎁 Total bonus shares: ${totBonusShares}</div>`:'';
+  document.getElementById('div-history-tbody').innerHTML=divRows||emptyRow(6,'No dividends recorded yet — click "+ Add Dividend" to log one.');
 }
 
 function renderHistory(){
@@ -2381,12 +2443,16 @@ function submitDividend(){
     faceVal, cashPct, cashPerShare, cashAmount, cashShares,
     bonusPct, bonusShares, bonusSharesHeld
   });
-  save(); closeDivModal(); renderInvesting();
+  save(); closeDivModal();
+  if(currentTab==='dividends') renderDividends(); else renderInvesting();
   toast(`Dividend added for ${symbol}` + (cashPct&&bonusPct?' (Cash + Bonus)':cashPct?' (Cash)':' (Bonus)'),'success');
 }
 function removeDividend(id){
   state.dividends = (state.dividends||[]).filter(d => d.id !== id);
-  save(); renderInvesting(); toast('Dividend removed','success');
+  save();
+  if(currentTab==='dividends') renderDividends();
+  else renderInvesting();
+  toast('Dividend removed','success');
 }
 
 // ─── ANNUAL REPORT ────────────────────────────────────────────────────────────
@@ -2832,8 +2898,14 @@ async function pushToCloud(){
     toast('☁️ Saved to cloud','success');
   }catch(e){
     setCloudDot('error');
-    if(sl) sl.textContent='❌ Sync failed';
-    toast('Cloud save failed: '+e.message,'error');
+    const code=e.code||'unknown';
+    if(sl) sl.textContent='❌ Sync failed ('+code+')';
+    let hint='';
+    if(code==='permission-denied') hint=' — Firestore rules expired. Go to Firebase Console → Firestore → Rules and republish.';
+    else if(code==='unauthenticated') hint=' — Auth expired. Sign out and sign back in.';
+    else if(code==='unavailable') hint=' — Network issue. Check your internet connection.';
+    toast('Cloud save failed ['+code+']: '+e.message+hint,'error');
+    console.error('pushToCloud error:',e);
   }
 }
 
@@ -2864,8 +2936,14 @@ async function loadFromCloud(){
   }catch(e){
     _cloudLoading=false;
     setCloudDot('error');
-    if(sl) sl.textContent='❌ Load failed';
-    toast('Cloud load failed: '+e.message,'error');
+    const code=e.code||'unknown';
+    if(sl) sl.textContent='❌ Load failed ('+code+')';
+    let hint='';
+    if(code==='permission-denied') hint=' — Firestore rules expired. Go to Firebase Console → Firestore → Rules and republish.';
+    else if(code==='unauthenticated') hint=' — Auth expired. Sign out and sign back in.';
+    else if(code==='unavailable') hint=' — Network issue. Check your internet connection.';
+    toast('Cloud load failed ['+code+']: '+e.message+hint,'error');
+    console.error('loadFromCloud error:',e);
   }
   document.getElementById('cloud-menu').classList.remove('open');
 }
