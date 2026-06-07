@@ -396,6 +396,8 @@ tbody td{padding:11px 14px;vertical-align:middle}
   tbody td{padding:8px 8px}
 }
 
+.note-input:focus{border-bottom-color:var(--accent)!important;color:var(--text)!important}
+
 /* ── WATCHLIST ── */
 .wl-signal{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap}
 .wl-buy{background:var(--green-bg);color:var(--green)}
@@ -576,6 +578,10 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:4px 10px 6px;font-weight:600">Portfolio Data</div>
         <div class="theme-opt" onclick="exportData()">⬇️&nbsp; Export Backup</div>
         <div class="theme-opt" onclick="importData()">⬆️&nbsp; Import Backup</div>
+        <div class="theme-opt" onclick="exportTransactionsCSV()">📋&nbsp; Export Transactions CSV</div>
+        <div class="theme-opt" onclick="exportPortfolioCSV()">📊&nbsp; Export Portfolio CSV</div>
+        <div style="height:1px;background:var(--border);margin:4px 6px"></div>
+        <div class="theme-opt" onclick="openSplitModal()">🔀&nbsp; Log Stock Split</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
         <div class="theme-opt" onclick="hardRefresh()">🔄&nbsp; Clear Cache &amp; Reload</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
@@ -644,6 +650,12 @@ tbody td{padding:11px 14px;vertical-align:middle}
         </div>
       </div>
       <div id="perf-chart"></div>
+    </div>
+
+    <!-- Contribution Analysis -->
+    <div class="chart-card" style="margin-bottom:18px">
+      <div class="chart-card-title">🏅 Top Contributors</div>
+      <div id="contribution-chart"></div>
     </div>
 
     <!-- Row: Sector Chart + Holdings -->
@@ -717,7 +729,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <div class="table-wrap" id="trading-table-wrap">
       <table>
         <thead><tr>
-          <th>Symbol</th><th>Sector</th><th>Avg Buy</th><th>Stop Loss</th><th>Held</th><th>Invested</th>
+          <th>Symbol</th><th>Sector</th><th>Held For</th><th>Avg Buy</th><th>Stop Loss</th><th>Held</th><th>Invested</th>
           <th>Market Price</th><th>Current Value</th><th>Unrealized P&amp;L</th><th>Return %</th>
           <th>Realized P&amp;L</th><th>Status</th>
         </tr></thead>
@@ -736,7 +748,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <div class="table-wrap" id="investing-table-wrap">
       <table>
         <thead><tr>
-          <th>Symbol</th><th>Qty</th><th>Avg Buy</th><th>Stop Loss</th><th>Invested</th><th>% of Portfolio</th>
+          <th>Symbol</th><th>Held For</th><th>Qty</th><th>Avg Buy</th><th>Stop Loss</th><th>Invested</th><th>% of Portfolio</th>
           <th>Sector</th><th>Market Price</th><th>Current Value</th><th>Unrealized P&amp;L</th><th>Return %</th>
         </tr></thead>
         <tbody id="investing-tbody"></tbody>
@@ -1146,6 +1158,40 @@ tbody td{padding:11px 14px;vertical-align:middle}
     </div>
     <!-- Active alerts list -->
     <div id="al-list"></div>
+  </div>
+</div>
+
+<!-- SPLIT MODAL -->
+<div class="modal-overlay" id="split-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title">🔀 Log Stock Split</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:16px">Adjusts all historical buy transactions for the symbol (before the split date) by the split ratio.</div>
+    <div class="form-row">
+      <label>Symbol *</label>
+      <input id="split-symbol" class="form-input" placeholder="e.g. BRAC" oninput="this.value=this.value.toUpperCase();previewSplit()"/>
+    </div>
+    <div class="form-row">
+      <label>Split Date *</label>
+      <input id="split-date" class="form-input" type="date" oninput="previewSplit()"/>
+    </div>
+    <div class="form-row">
+      <label>Ratio (Old : New) *</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input id="split-from" class="form-input" type="number" min="1" step="1" placeholder="1" style="width:80px" oninput="previewSplit()"/>
+        <span style="color:var(--muted)">:</span>
+        <input id="split-to" class="form-input" type="number" min="1" step="1" placeholder="2" style="width:80px" oninput="previewSplit()"/>
+        <span style="font-size:11px;color:var(--muted)">e.g. 1:2 doubles shares, halves price</span>
+      </div>
+    </div>
+    <div class="form-row">
+      <label>Notes</label>
+      <input id="split-notes" class="form-input" placeholder="Optional notes"/>
+    </div>
+    <div id="split-preview" style="font-size:12px;color:var(--muted);min-height:20px;margin-bottom:12px"></div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-primary" onclick="submitSplit()">Apply Split</button>
+      <button class="btn-secondary" onclick="document.getElementById('split-modal').classList.remove('open')">Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -1791,7 +1837,7 @@ const FALLBACK_COLORS=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#8b5cf
 function getSectorColor(s,i){ return SECTOR_COLORS[s]||FALLBACK_COLORS[i%FALLBACK_COLORS.length]; }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[] };
+let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[] };
 // Cloud sync globals
 let _fbAuth=null,_fbDb=null,_fbUser=null,_saveTimer=null,_cloudLoading=false;
 let formType='buy', formPurpose='investing', editingId=null;
@@ -2397,6 +2443,9 @@ function renderDashboard(){
 
   // ── Performance Chart ──
   renderPerfChart();
+
+  // ── Contribution Analysis ──
+  renderContribution();
 }
 
 function renderDonut(data){
@@ -2424,6 +2473,50 @@ function renderDonut(data){
     <text x="${cx}" y="${cy-7}" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">৳${lbl}</text>
     <text x="${cx}" y="${cy+11}" text-anchor="middle" fill="#94a3b8" font-size="10.5">invested</text>
   </svg><div class="legend">${legend}</div>`;
+}
+
+function renderContribution(){
+  const el=document.getElementById('contribution-chart');
+  if(!el)return;
+  const syms=getSymbols();
+  if(!syms.length){el.innerHTML='<div style="text-align:center;color:var(--muted);padding:30px;font-size:13px">Add holdings to see contribution analysis</div>';return;}
+  const items=[];
+  let totCost=0;
+  syms.forEach(sym=>{
+    const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
+    const ds=getDivStats(sym);
+    const cp=state.currentPrices[sym]||0;
+    const heldQty=inv.heldQty+trd.heldQty;
+    const heldCost=inv.heldCost+trd.heldCost;
+    const adjQty=heldQty+ds.totalBonusShares;
+    const realized=inv.realized+trd.realized;
+    const unrealized=cp&&heldQty>0?adjQty*cp-heldCost:0;
+    const contribution=realized+unrealized+ds.totalCashAmount;
+    totCost+=heldCost;
+    if(heldCost>0||realized!==0) items.push({sym,contribution,heldCost});
+  });
+  if(!items.length){el.innerHTML='<div style="text-align:center;color:var(--muted);padding:30px;font-size:13px">No data yet</div>';return;}
+  items.sort((a,b)=>b.contribution-a.contribution);
+  const display=items.slice(0,8);
+  if(!display.length){el.innerHTML='';return;}
+  const maxAbs=Math.max(...display.map(i=>Math.abs(i.contribution)),1);
+  const rowH=28,pad=8,labelW=80,valW=90,barAreaW=800-labelW-valW-pad*3;
+  const H=display.length*rowH+pad*2;
+  const rows=display.map((item,i)=>{
+    const y=pad+i*rowH;
+    const barW=Math.max(2,(Math.abs(item.contribution)/maxAbs)*barAreaW*0.92);
+    const x0=labelW+pad;
+    const isPos=item.contribution>=0;
+    const color=isPos?'#22c55e':'#ef4444';
+    const pct=totCost>0?(item.contribution/totCost*100):0;
+    const valStr=(item.contribution>=0?'+':'')+((item.contribution/1000).toFixed(1))+'K';
+    const pctStr=pct!==0?(pct>=0?'+':'')+pct.toFixed(1)+'%':'';
+    return`<text x="${labelW-4}" y="${y+rowH*0.65}" text-anchor="end" fill="var(--text)" font-size="11" font-family="system-ui" font-weight="600">${item.sym}</text>
+           <rect x="${x0}" y="${y+4}" width="${barW.toFixed(1)}" height="${rowH-10}" fill="${color}" opacity="0.85" rx="3"/>
+           <text x="${x0+barW+6}" y="${y+rowH*0.65}" fill="${color}" font-size="11" font-family="system-ui" font-weight="600">${valStr}</text>
+           <text x="${800-pad}" y="${y+rowH*0.65}" text-anchor="end" fill="#64748b" font-size="10" font-family="system-ui">${pctStr}</text>`;
+  }).join('');
+  el.innerHTML=`<svg viewBox="0 0 800 ${H}" style="width:100%;height:${H}px">${rows}</svg>`;
 }
 
 function renderTrading(){
@@ -2458,9 +2551,12 @@ function renderTrading(){
     const slT=(state.stopLoss||{})[sym]!=null?(state.stopLoss||{})[sym]:avgT?+(avgT*0.92).toFixed(2):0;
     const slStatT=open&&cp&&slT&&avgT?(cp<=slT?'hit':cp<=avgT*0.94?'warn':'safe'):'';
     return`<tr>
-      <td><div class="sym">${sym}</div><div class="name-sub">${getSymbolName(sym)}</div></td>
+      <td><div class="sym">${sym}</div><div class="name-sub">${getSymbolName(sym)}</div>
+        <input class="note-input" value="${(state.stockNotes||{})[sym]||''}" placeholder="📝 Add note…"
+          onblur="updateStockNote('${sym}',this.value)" style="width:100%;font-size:10px;color:var(--muted);background:transparent;border:none;border-bottom:1px dashed var(--border);outline:none;margin-top:3px;padding:1px 0"/></td>
       <td><div class="sector-cell"><span class="sector-dot" style="background:${sc};display:${sec?'inline-block':'none'}"></span>
         <input class="sector-input" value="${sec}" placeholder="Enter sector…" onchange="updateSector('${sym}',this.value)" onblur="updateSector('${sym}',this.value)"/></div></td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${open?getHoldingPeriod(sym,'trading')||'—':'—'}</td>
       <td>${d.avgBuyAll>0?fmt(d.avgBuyAll):''}</td>
       <td><div style="display:flex;align-items:center;gap:5px">
         <input class="price-input" value="${slT>0?slT:''}" placeholder="—"
@@ -2480,7 +2576,7 @@ function renderTrading(){
       <td>${open?'<span class="badge badge-open">Open</span>':'<span class="badge badge-closed">Closed</span>'}</td>
     </tr>`;
   }).join('');
-  document.getElementById('trading-tbody').innerHTML=rows||emptyRow(12,'No trading positions. Add a buy tagged as ⚡ Trading.');
+  document.getElementById('trading-tbody').innerHTML=rows||emptyRow(13,'No trading positions. Add a buy tagged as ⚡ Trading.');
 }
 
 function renderInvesting(){
@@ -2516,7 +2612,10 @@ function renderInvesting(){
     const slI  = (state.stopLoss||{})[sym]!=null ? (state.stopLoss||{})[sym] : avgI ? +(avgI*0.92).toFixed(2) : 0;
     const slStatI = cp && slI && avgI ? (cp<=slI?'hit':cp<=avgI*0.94?'warn':'safe') : '';
     return`<tr>
-      <td><div class="sym">${sym}</div><div class="name-sub">${getSymbolName(sym)}</div></td>
+      <td><div class="sym">${sym}</div><div class="name-sub">${getSymbolName(sym)}</div>
+        <input class="note-input" value="${(state.stockNotes||{})[sym]||''}" placeholder="📝 Add note…"
+          onblur="updateStockNote('${sym}',this.value)" style="width:100%;font-size:10px;color:var(--muted);background:transparent;border:none;border-bottom:1px dashed var(--border);outline:none;margin-top:3px;padding:1px 0"/></td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${getHoldingPeriod(sym,'investing')||'—'}</td>
       <td>
         <strong>${adjQty}</strong>
         ${ds.totalBonusShares>0?`<div style="font-size:10px;color:var(--accent2);margin-top:2px">+${ds.totalBonusShares} bonus</div>`:''}
@@ -2559,7 +2658,7 @@ function renderInvesting(){
     card('Unrealized P&L',totUPnL?fmtPnl(totUPnL):'—',totUPnL>0?'green':totUPnL<0?'red':'','Bonus shares value vs cost paid','📈')+
     card('Cash Dividend',totDivIncome?fmt(totDivIncome):'৳0.00','green','See Dividends tab for details','💵')+
     card('Bonus Shares',totBonusShares?String(totBonusShares)+' shares':'0 shares','','See Dividends tab for details','🎁');
-  document.getElementById('investing-tbody').innerHTML=rows||emptyRow(11,'No investment holdings. Add a buy tagged as 📈 Investing.');
+  document.getElementById('investing-tbody').innerHTML=rows||emptyRow(12,'No investment holdings. Add a buy tagged as 📈 Investing.');
 }
 
 // ─── DIVIDENDS TAB ────────────────────────────────────────────────────────────
@@ -2568,6 +2667,28 @@ function renderDividends(){
   const syms=getSymbols();
   const divs=state.dividends||[];
   let totCashIncome=0,totBonusShares=0,totBonusValue=0,totOrigCost=0;
+
+  // Projected 12-month income
+  let projectedAnnual=0;
+  syms.forEach(sym=>{
+    const inv=calcPnL(sym,'investing');
+    const trd=calcPnL(sym,'trading');
+    const heldQty=inv.heldQty+trd.heldQty;
+    if(heldQty<=0) return;
+    const symDivs=(state.dividends||[]).filter(d=>d.symbol===sym);
+    if(!symDivs.length) return;
+    const twoYrsAgo=new Date(); twoYrsAgo.setFullYear(twoYrsAgo.getFullYear()-2);
+    const twoYrsAgoStr=twoYrsAgo.toISOString().split('T')[0];
+    const recentDivs=symDivs.filter(d=>d.date>=twoYrsAgoStr);
+    if(!recentDivs.length) return;
+    const totalCash=recentDivs.reduce((s,d)=>s+(d.cashAmount!=null?d.cashAmount:(d.type==='cash'?d.amount||0:0)),0);
+    const avgSharesAtTime=recentDivs.reduce((s,d)=>s+(d.cashShares||heldQty),0)/recentDivs.length;
+    const monthsSpanned=recentDivs.length>1
+      ?(new Date(recentDivs[recentDivs.length-1].date)-new Date(recentDivs[0].date))/(30*86400000)+1
+      :12;
+    const annualCash=monthsSpanned>0&&avgSharesAtTime>0?(totalCash/avgSharesAtTime)*(12/monthsSpanned)*heldQty:0;
+    projectedAnnual+=annualCash;
+  });
 
   // Per-symbol rows (only symbols that have dividends)
   const symRows=syms.map(sym=>{
@@ -2613,7 +2734,8 @@ function renderDividends(){
     card('Cash Income',totCashIncome?fmt(totCashIncome):'৳0.00','green','Total cash dividends received','💵')+
     card('Bonus Shares',totBonusShares?String(totBonusShares)+' shares':'0 shares',totBonusShares>0?'green':'','Total bonus shares received','🎁')+
     card('Bonus Market Value',totBonusValue?fmt(totBonusValue):'—',totBonusValue>0?'green':'','Current value of bonus shares','📈')+
-    card('Dividend Return',totDivReturn?'+'+totDivReturn.toFixed(2)+'%':'—','green','(Cash + Bonus value) ÷ Cost','🏆');
+    card('Dividend Return',totDivReturn?'+'+totDivReturn.toFixed(2)+'%':'—','green','(Cash + Bonus value) ÷ Cost','🏆')+
+    card('📅 12M Projection',projectedAnnual>0?fmt(projectedAnnual):'—','green','Est. annual income from held stocks','📅');
 
   document.getElementById('div-per-symbol-tbody').innerHTML=symRows||emptyRow(10,'No dividend records yet — click "+ Add Dividend" to log one.');
 
@@ -2704,6 +2826,25 @@ function updateSector(sym,val){
   if(currentTab==='dashboard')renderDashboard();
   if(currentTab==='trading')renderTrading();
   if(currentTab==='history')renderHistory();
+}
+
+function updateStockNote(sym,val){
+  state.stockNotes=state.stockNotes||{};
+  state.stockNotes[sym]=val.trim();
+  save();
+}
+
+function getHoldingPeriod(sym,purpose){
+  const d=calcPnL(sym,purpose);
+  if(d.heldQty<=0) return null;
+  const buys=state.transactions
+    .filter(t=>t.type==='buy'&&t.symbol===sym&&t.purpose===purpose)
+    .sort((a,b)=>new Date(a.date)-new Date(b.date));
+  if(!buys.length) return null;
+  const days=Math.floor((Date.now()-new Date(buys[0].date))/86400000);
+  if(days>=365) return Math.floor(days/365)+'y '+Math.floor((days%365)/30)+'m';
+  if(days>=30)  return Math.floor(days/30)+'m '+(days%30)+'d';
+  return days+'d';
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -3084,7 +3225,7 @@ function importData() {
 function clearAllData() {
   toggleDataMenu(true);
   if(!confirm('Delete ALL portfolio data permanently?\n\nThis cannot be undone. Export a backup first if needed.')) return;
-  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,portfolioSnapshots:[],priceAlerts:[]};
+  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[]};
   save(); render();
   document.getElementById('sync-status').textContent='';
   toast('All data cleared','success');
@@ -3455,12 +3596,104 @@ document.addEventListener('click',e=>{
   if(wrap&&menu&&!wrap.contains(e.target)) menu.classList.remove('open');
 });
 
+// ─── CSV EXPORT ───────────────────────────────────────────────────────────────
+function downloadCSV(filename,headers,rows){
+  toggleDataMenu(true);
+  const esc=v=>'"'+String(v==null?'':v).replace(/"/g,'""')+'"';
+  const csv=[headers,...rows].map(r=>r.map(esc).join(',')).join('\n');
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=filename+'-'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click(); URL.revokeObjectURL(url);
+  toast('CSV exported','success');
+}
+
+function exportTransactionsCSV(){
+  const headers=['Date','Type','Purpose','Symbol','Name','Sector','Quantity','Price','Total','Notes'];
+  const rows=[...state.transactions].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(t=>[
+    t.date,t.type,t.purpose,t.symbol,t.name||'',state.sectorMap[t.symbol]||'',
+    t.quantity,t.price,(t.quantity*t.price).toFixed(2),t.notes||''
+  ]);
+  downloadCSV('transactions',headers,rows);
+}
+
+function exportPortfolioCSV(){
+  const headers=['Symbol','Name','Sector','Held Qty','Avg Buy','Invested','Market Price','Current Value','Unrealized P&L','Return %','Realized P&L','Cash Dividends','Bonus Shares'];
+  const rows=getSymbols().map(sym=>{
+    const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
+    const ds=getDivStats(sym);
+    const heldQty=inv.heldQty+trd.heldQty;
+    const heldCost=inv.heldCost+trd.heldCost;
+    const realized=inv.realized+trd.realized;
+    if(heldQty<=0&&realized===0) return null;
+    const cp=state.currentPrices[sym]||0;
+    const adjQty=heldQty+ds.totalBonusShares;
+    const val=cp?adjQty*cp:heldCost;
+    const upnl=cp?val-heldCost:0;
+    const avgBuy=heldQty>0?heldCost/heldQty:0;
+    return[sym,getSymbolName(sym),state.sectorMap[sym]||'',adjQty,avgBuy.toFixed(2),
+      heldCost.toFixed(2),cp||'',cp?val.toFixed(2):'',cp?upnl.toFixed(2):'',
+      cp&&heldCost>0?(upnl/heldCost*100).toFixed(2)+'%':'',realized.toFixed(2),
+      ds.totalCashAmount.toFixed(2),ds.totalBonusShares];
+  }).filter(Boolean);
+  downloadCSV('portfolio-statement',headers,rows);
+}
+
+// ─── STOCK SPLITS ─────────────────────────────────────────────────────────────
+function openSplitModal(){
+  toggleDataMenu(true);
+  document.getElementById('split-symbol').value='';
+  document.getElementById('split-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('split-from').value='1';
+  document.getElementById('split-to').value='2';
+  document.getElementById('split-notes').value='';
+  document.getElementById('split-preview').textContent='';
+  document.getElementById('split-modal').classList.add('open');
+}
+
+function previewSplit(){
+  const sym=document.getElementById('split-symbol').value.trim().toUpperCase();
+  const from=parseFloat(document.getElementById('split-from').value)||1;
+  const to=parseFloat(document.getElementById('split-to').value)||2;
+  const date=document.getElementById('split-date').value;
+  if(!sym||!date){document.getElementById('split-preview').textContent='';return;}
+  const affected=state.transactions.filter(t=>t.type==='buy'&&t.symbol===sym&&t.date<=date);
+  document.getElementById('split-preview').textContent=
+    affected.length?`Will adjust ${affected.length} buy transaction(s) for ${sym}: qty ×${to/from}, price ÷${to/from}`
+    :`No buy transactions found for ${sym} on or before ${date}`;
+}
+
+function submitSplit(){
+  const sym=document.getElementById('split-symbol').value.trim().toUpperCase();
+  const date=document.getElementById('split-date').value;
+  const from=parseFloat(document.getElementById('split-from').value)||1;
+  const to=parseFloat(document.getElementById('split-to').value)||2;
+  const notes=document.getElementById('split-notes').value.trim();
+  if(!sym) return toast('Enter a symbol','error');
+  if(!date) return toast('Select a date','error');
+  if(from<=0||to<=0) return toast('Invalid ratio','error');
+  if(from===to) return toast('Ratio must differ from 1:1','error');
+  const ratio=to/from;
+  const affected=state.transactions.filter(t=>t.type==='buy'&&t.symbol===sym&&t.date<=date);
+  if(!affected.length) return toast(`No buy transactions found for ${sym} on/before ${date}`,'error');
+  if(!confirm(`Apply ${from}:${to} split to ${affected.length} buy transaction(s) for ${sym}?\n\nQty will be multiplied by ${ratio}, price divided by ${ratio}.\n\nThis cannot be undone.`)) return;
+  affected.forEach(t=>{t.quantity=+(t.quantity*ratio).toFixed(4);t.price=+(t.price/ratio).toFixed(4);});
+  if(state.stopLoss&&state.stopLoss[sym]) state.stopLoss[sym]=+(state.stopLoss[sym]/ratio).toFixed(4);
+  state.splits=state.splits||[];
+  state.splits.push({id:Date.now(),symbol:sym,date,fromShares:from,toShares:to,notes,appliedAt:new Date().toISOString()});
+  save(); render();
+  document.getElementById('split-modal').classList.remove('open');
+  toast(`✅ ${from}:${to} split applied to ${affected.length} transaction(s) for ${sym}`,'success');
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.getElementById('modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
 document.getElementById('wl-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeWatchlistModal();});
 document.getElementById('calc-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCalcModal();});
 document.getElementById('div-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeDivModal();});
 document.getElementById('alert-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAlertModal();});
+document.getElementById('split-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)document.getElementById('split-modal').classList.remove('open');});
 load();
 // Save snapshot on load if prices exist
 if(Object.keys(state.currentPrices||{}).length>0) savePortfolioSnapshot();
