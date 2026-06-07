@@ -569,6 +569,17 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <button class="nav-tab" onclick="switchTab('reports')">📄 Reports</button>
   </div>
   <div class="topbar-actions">
+    <div class="portfolio-wrap" style="position:relative">
+      <button class="btn-sync" id="portfolio-btn" onclick="togglePortfolioMenu()" title="Switch Portfolio" style="gap:4px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        🗂️ <span id="portfolio-label" style="max-width:90px;overflow:hidden;text-overflow:ellipsis;display:inline-block;vertical-align:middle">Main Portfolio</span> ▾
+      </button>
+      <div class="theme-menu" id="portfolio-menu" style="min-width:200px">
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:4px 10px 6px;font-weight:600">Portfolios</div>
+        <div id="portfolio-list"></div>
+        <div style="height:1px;background:var(--border);margin:4px 6px"></div>
+        <div class="theme-opt" onclick="openCreatePortfolioModal()">➕&nbsp; New Portfolio</div>
+      </div>
+    </div>
     <!-- Theme picker -->
     <button class="btn-sync btn-calc-full" onclick="openCalcModal()" style="white-space:nowrap">⚡ Calculator</button>
     <button class="btn-sync" onclick="openAlertModal()" title="Price Alerts" style="white-space:nowrap">🔔</button>
@@ -580,6 +591,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <div class="theme-opt" onclick="importData()">⬆️&nbsp; Import Backup</div>
         <div class="theme-opt" onclick="exportTransactionsCSV()">📋&nbsp; Export Transactions CSV</div>
         <div class="theme-opt" onclick="exportPortfolioCSV()">📊&nbsp; Export Portfolio CSV</div>
+        <div class="theme-opt" onclick="importTransactionsCSV()">📂&nbsp; Import Transactions CSV</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
         <div class="theme-opt" onclick="openSplitModal()">🔀&nbsp; Log Stock Split</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
@@ -827,6 +839,8 @@ tbody td{padding:11px 14px;vertical-align:middle}
           <button class="rpt-type-btn active" id="rpt-btn-statement" onclick="setReportType('statement')">📋 Portfolio Statement</button>
           <button class="rpt-type-btn" id="rpt-btn-pnl" onclick="setReportType('pnl')">📊 Profit &amp; Loss</button>
           <button class="rpt-type-btn" id="rpt-btn-annual" onclick="setReportType('annual')">📅 Annual Summary</button>
+          <button class="rpt-type-btn" id="rpt-btn-risk" onclick="setReportType('risk')">📉 Risk Analytics</button>
+          <button class="rpt-type-btn" id="rpt-btn-rebalance" onclick="setReportType('rebalance')">⚖️ Rebalancing</button>
         </div>
       </div>
       <div class="rpt-group" id="rpt-period-row" style="display:none">
@@ -1195,6 +1209,38 @@ tbody td{padding:11px 14px;vertical-align:middle}
   </div>
 </div>
 
+<!-- CSV IMPORT MODAL -->
+<div class="modal-overlay" id="csv-import-modal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-title">📂 Import Transactions CSV</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+      Expected columns (case-insensitive): <b>date</b> (YYYY-MM-DD), <b>type</b> (buy/sell), <b>symbol</b>, <b>quantity</b>, <b>price</b>.<br>
+      Optional: <b>purpose</b> (investing/trading, defaults to "investing"), <b>name</b>, <b>sector</b>, <b>notes</b>.<br>
+      Duplicate transactions (same date/symbol/type/qty/price) will be skipped.
+    </div>
+    <div id="csv-preview" style="max-height:280px;overflow-y:auto;font-size:12px"></div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn-primary" id="csv-confirm-btn" onclick="confirmCSVImport()" style="display:none">✅ Import All</button>
+      <button class="btn-secondary" style="padding:10px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:14px;cursor:pointer" onclick="document.getElementById('csv-import-modal').classList.remove('open')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PORTFOLIO MODAL -->
+<div class="modal-overlay" id="portfolio-modal">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-title" id="portfolio-modal-title">New Portfolio</div>
+    <div class="form-group">
+      <label>Portfolio Name *</label>
+      <input id="portfolio-name-input" class="form-input" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px;outline:none;width:100%" placeholder="e.g. Retirement Fund, Trading Account"/>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:8px">
+      <button class="btn-primary" onclick="submitPortfolioModal()">Save</button>
+      <button style="padding:10px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:14px;cursor:pointer" onclick="document.getElementById('portfolio-modal').classList.remove('open')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1250,6 +1296,7 @@ function toggleThemeMenu(forceClose) {
 document.addEventListener('click', e=>{
   if (!e.target.closest('.theme-wrap')) document.getElementById('theme-menu').classList.remove('open');
   if (!e.target.closest('#data-wrap')) document.getElementById('data-menu').classList.remove('open');
+  if (!e.target.closest('.portfolio-wrap')) document.getElementById('portfolio-menu').classList.remove('open');
 });
 // ─── PORTFOLIO HEALTH SCORE ──────────────────────────────────────────────────
 function calcHealthScore() {
@@ -1426,6 +1473,46 @@ function savePortfolioSnapshot(){
   state.portfolioSnapshots=filtered.slice(-730);
 }
 
+async function fetchAndSaveDSEX(){
+  const proxies=[
+    'https://corsproxy.io/?',
+    'https://api.codetabs.com/v1/proxy?quest=',
+    'https://api.allorigins.win/raw?url='
+  ];
+  const target='https://www.dsebd.org/market_summary.php';
+  for(const proxy of proxies){
+    try{
+      const res=await fetch(proxy+encodeURIComponent(target),{signal:AbortSignal.timeout(6000)});
+      if(!res.ok) continue;
+      const html=await res.text();
+      const m=html.match(/DSEX[\s\S]{0,200}?(\d{4,5}[,.]?\d{0,2})/i);
+      if(m){
+        const val=parseFloat(m[1].replace(/,/g,''));
+        if(val>2000&&val<20000){
+          const date=new Date().toISOString().split('T')[0];
+          state.dsexSnapshots=state.dsexSnapshots||[];
+          state.dsexSnapshots=state.dsexSnapshots.filter(s=>s.date!==date);
+          state.dsexSnapshots.push({date,value:val});
+          if(state.dsexSnapshots.length>730) state.dsexSnapshots=state.dsexSnapshots.slice(-730);
+          save();
+          return val;
+        }
+      }
+    }catch(e){}
+  }
+  return null;
+}
+
+function saveDSEXManual(){
+  const v=parseFloat(document.getElementById('dsex-manual')?.value);
+  if(!v||v<1000) return toast('Enter a valid DSEX value (e.g. 6234)','error');
+  const date=new Date().toISOString().split('T')[0];
+  state.dsexSnapshots=(state.dsexSnapshots||[]).filter(s=>s.date!==date);
+  state.dsexSnapshots.push({date,value:v});
+  save(); renderDashboard();
+  toast('DSEX value saved','success');
+}
+
 // Reconstruct cost history from transactions — returns [{date, totalCost}]
 function buildCostHistory(){
   const txs=[...state.transactions].filter(t=>t.type==='buy').sort((a,b)=>a.date.localeCompare(b.date));
@@ -1586,6 +1673,45 @@ function renderPerfChart(){
 
   const valGradId='vg'+Date.now(), costGradId='cg'+Date.now();
 
+  // DSEX overlay — normalize to same starting value as portfolio
+  const dsexSnapsAll=(state.dsexSnapshots||[]).filter(s=>s.date>=cutStr).sort((a,b)=>a.date.localeCompare(b.date));
+  let dsexPts='', dsexLegend='';
+  const dsexColor='#94a3b8';
+  if(dsexSnapsAll.length>=2){
+    // Find first portfolio value to normalize against
+    const firstPortVal=valueSeries.find(v=>v!==null);
+    const firstDsexVal=dsexSnapsAll[0].value;
+    const dsexMap=Object.fromEntries(dsexSnapsAll.map(s=>[s.date,s.value]));
+    // Build normalized DSEX series aligned to labelDates
+    const dsexSeries=[];
+    let lastDsex=null;
+    labelDates.forEach(d=>{
+      if(dsexMap[d]!==undefined) lastDsex=dsexMap[d];
+      dsexSeries.push(lastDsex);
+    });
+    // Normalize: scale so first dsex value = firstPortVal
+    const scale=firstPortVal&&firstDsexVal?firstPortVal/firstDsexVal:1;
+    const dsexNorm=dsexSeries.map(v=>v!==null?v*scale:null);
+    dsexPts=buildPoints(dsexNorm);
+    if(dsexPts){
+      const lastDsexIdx=dsexNorm.map((v,i)=>v!==null?i:-1).filter(i=>i>=0).pop();
+      const lastDsexNormVal=lastDsexIdx!=null?dsexNorm[lastDsexIdx]:null;
+      const lastDsexRaw=lastDsexIdx!=null?dsexSnapsAll[dsexSnapsAll.length-1].value:null;
+      const dsexRetPct=firstDsexVal&&lastDsexRaw?(lastDsexRaw-firstDsexVal)/firstDsexVal*100:null;
+      dsexLegend=`<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)">
+        <svg width="24" height="6"><line x1="0" y1="3" x2="24" y2="3" stroke="${dsexColor}" stroke-width="1.5" stroke-dasharray="5,3"/></svg>
+        DSEX${dsexRetPct!==null?` <span style="color:${dsexRetPct>=0?'var(--green)':'var(--red)'};font-weight:600">(${dsexRetPct>=0?'+':''}${dsexRetPct.toFixed(1)}%)</span>`:''}
+      </div>`;
+    }
+  }
+
+  const dsexManualInput=(state.dsexSnapshots||[]).length===0?`
+  <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)">
+    <span>DSEX today:</span>
+    <input id="dsex-manual" class="form-input" type="number" style="width:100px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;outline:none" placeholder="e.g. 6234"/>
+    <button class="btn-secondary" style="padding:4px 10px;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer" onclick="saveDSEXManual()">Save</button>
+  </div>`:'';
+
   el.innerHTML=`
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
     <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)">
@@ -1596,6 +1722,7 @@ function renderPerfChart(){
       <svg width="24" height="6"><line x1="0" y1="3" x2="24" y2="3" stroke="${valColor}" stroke-width="2"/></svg>
       Portfolio Value
     </div>
+    ${dsexLegend}
     ${latestVal!==null&&latestCost!==null?`<div style="margin-left:auto;font-size:11px;color:${valColor};font-weight:600">${isGain?'▲':'▼'} ${latestCost>0?((latestVal-latestCost)/latestCost*100).toFixed(2)+'%':'—'} unrealized</div>`:''}
   </div>
   <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">
@@ -1615,9 +1742,10 @@ function renderPerfChart(){
     ${valArea?`<path d="${valArea}" fill="url(#${valGradId})"/>`:''}
     ${costPts?`<polyline points="${costPts}" fill="none" stroke="${costColor}" stroke-width="1.5" stroke-dasharray="6,4" stroke-linejoin="round"/>`:''}
     ${valPts?`<polyline points="${valPts}" fill="none" stroke="${valColor}" stroke-width="2" stroke-linejoin="round"/>`:''}
+    ${dsexPts?`<polyline points="${dsexPts}" fill="none" stroke="${dsexColor}" stroke-width="1.5" stroke-dasharray="5,3" stroke-linejoin="round"/>`:''}
     ${dotVal}${dotCost}
     ${xLabels}
-  </svg>`;
+  </svg>${dsexManualInput}`;
 }
 
 // ─── PRICE ALERTS ─────────────────────────────────────────────────────────────
@@ -1837,13 +1965,19 @@ const FALLBACK_COLORS=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#8b5cf
 function getSectorColor(s,i){ return SECTOR_COLORS[s]||FALLBACK_COLORS[i%FALLBACK_COLORS.length]; }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[] };
+let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{} };
 // Cloud sync globals
 let _fbAuth=null,_fbDb=null,_fbUser=null,_saveTimer=null,_cloudLoading=false;
 let formType='buy', formPurpose='investing', editingId=null;
 let currentTab='dashboard', tradeFilter='all', histFilter='all', isSyncing=false;
 
-function save(){ localStorage.setItem('pm_v2',JSON.stringify(state)); scheduleCloudSave(); }
+function getActivePortfolioId() { return localStorage.getItem('pm_active') || 'default'; }
+function getPortfolioList() {
+  try { return JSON.parse(localStorage.getItem('pm_portfolios') || '[]'); }
+  catch(e) { return []; }
+}
+function getStateKey(id) { const pid = id || getActivePortfolioId(); return pid === 'default' ? 'pm_v2' : 'pm_v2_' + pid; }
+function save(){ localStorage.setItem(getStateKey(),JSON.stringify(state)); scheduleCloudSave(); }
 function scheduleCloudSave(){
   if(!_fbUser||_cloudLoading)return;
   clearTimeout(_saveTimer);
@@ -1851,10 +1985,12 @@ function scheduleCloudSave(){
 }
 function load(){
   try {
-    const raw=localStorage.getItem('pm_v2');
+    const raw=localStorage.getItem(getStateKey());
     if(raw) state={...state,...JSON.parse(raw)};
-    const old=localStorage.getItem('pm_state');
-    if(old&&!raw){ const o=JSON.parse(old); state.transactions=o.transactions||[]; state.currentPrices=o.currentPrices||{}; save(); }
+    else {
+      const old=localStorage.getItem('pm_v2');
+      if(old&&getActivePortfolioId()==='default') state={...state,...JSON.parse(old)};
+    }
   } catch(e){}
 }
 
@@ -1991,6 +2127,7 @@ async function syncFromDSE(){
     }
     state.lastSync=new Date().toISOString();
     savePortfolioSnapshot();
+    fetchAndSaveDSEX();
     save(); checkPriceAlerts(); renderInvesting(); render();
     const label=priceLabel==='close'?'Last close':'Live';
     document.getElementById('sync-status').textContent=`${label} prices · ${new Date(state.lastSync).toLocaleTimeString()}`;
@@ -2198,6 +2335,22 @@ function renderDashboard(){
   const grandTotal=totalPnL+totCashDiv+totBonusValue;
   const grandRetPct=totInv>0?(grandTotal/totInv)*100:null;
 
+  // DSEX benchmark card
+  const dsexSnaps=(state.dsexSnapshots||[]).sort((a,b)=>a.date.localeCompare(b.date));
+  const portSnaps=(state.portfolioSnapshots||[]).filter(s=>s.totalValue>0).sort((a,b)=>a.date.localeCompare(b.date));
+  let dsexCardHtml;
+  if(dsexSnaps.length>=2&&portSnaps.length>=2){
+    const firstDSEX=dsexSnaps[0], lastDSEX=dsexSnaps[dsexSnaps.length-1];
+    const firstPort=portSnaps[0], lastPort=portSnaps[portSnaps.length-1];
+    const dsexRet=firstDSEX.value>0?(lastDSEX.value-firstDSEX.value)/firstDSEX.value*100:null;
+    const portRet=firstPort.totalCost>0?(lastPort.totalValue-firstPort.totalCost)/firstPort.totalCost*100:null;
+    const pStr=portRet!==null?`<span style="color:${portRet>=0?'var(--green)':'var(--red)'};font-weight:700">${portRet>=0?'+':''}${portRet.toFixed(1)}%</span>`:' — ';
+    const dStr=dsexRet!==null?`<span style="color:${dsexRet>=0?'var(--green)':'var(--red)'};font-weight:700">${dsexRet>=0?'+':''}${dsexRet.toFixed(1)}%</span>`:' — ';
+    dsexCardHtml=`<div class="card"><div class="card-icon">📊</div><div class="card-label">vs DSEX Benchmark</div><div class="card-value" style="font-size:13px;line-height:1.6">Portfolio: ${pStr}<br>DSEX: ${dStr}</div><div class="card-sub">Since ${firstPort.date}</div></div>`;
+  } else {
+    dsexCardHtml=`<div class="card"><div class="card-icon">📊</div><div class="card-label">vs DSEX Benchmark</div><div class="card-value" style="font-size:13px;color:var(--muted)">Sync to compare</div><div class="card-sub">Needs 2+ syncs with DSEX data</div></div>`;
+  }
+
   document.getElementById('summary-cards').innerHTML=
     card('Portfolio Value',fmt(totPortVal),'','Current holdings value','💼')+
     card('Total Invested',fmt(totInv),'','Open positions cost','💰')+
@@ -2211,7 +2364,8 @@ function renderDashboard(){
       fmtPnl(grandTotal)+(grandRetPct!==null?' <span style="font-size:14px;opacity:.8">('+grandRetPct.toFixed(2)+'%)</span>':''),
       grandTotal>=0?'green':'red',
       'P&L + Dividends + Bonus value'+(totBonusValue>0?' · Bonus: '+fmt(totBonusValue):''),
-      '🏆');
+      '🏆')+
+    dsexCardHtml;
 
   // Market status
   const ms=getDSEStatus();
@@ -3224,11 +3378,106 @@ function importData() {
 }
 function clearAllData() {
   toggleDataMenu(true);
-  if(!confirm('Delete ALL portfolio data permanently?\n\nThis cannot be undone. Export a backup first if needed.')) return;
-  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[]};
+  const pid = getActivePortfolioId();
+  const name = (getPortfolioList().find(p=>p.id===pid)||{}).name || 'this portfolio';
+  if(!confirm(`Delete ALL data for "${name}" permanently?\n\nThis cannot be undone. Export a backup first if needed.`)) return;
+  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{}};
   save(); render();
   document.getElementById('sync-status').textContent='';
   toast('All data cleared','success');
+}
+
+// ─── RISK METRICS ────────────────────────────────────────────────────────────
+function calcRiskMetrics(){
+  const snaps=(state.portfolioSnapshots||[]).sort((a,b)=>a.date.localeCompare(b.date)).filter(s=>s.totalValue>0);
+  if(snaps.length<5) return null;
+  const vals=snaps.map(s=>s.totalValue);
+  let maxDD=0,peak=vals[0];
+  vals.forEach(v=>{if(v>peak)peak=v;const dd=(peak-v)/peak;if(dd>maxDD)maxDD=dd;});
+  const returns=[];
+  for(let i=1;i<vals.length;i++) if(vals[i-1]>0) returns.push((vals[i]-vals[i-1])/vals[i-1]);
+  if(!returns.length) return null;
+  const mean=returns.reduce((a,b)=>a+b,0)/returns.length;
+  const variance=returns.reduce((a,b)=>a+(b-mean)**2,0)/returns.length;
+  const volatility=Math.sqrt(variance*252)*100;
+  const bestReturn=Math.max(...returns)*100;
+  const worstReturn=Math.min(...returns)*100;
+  const totalReturn=vals[0]>0?(vals[vals.length-1]-vals[0])/vals[0]*100:0;
+  return{maxDrawdown:maxDD*100,volatility,bestReturn,worstReturn,totalReturn,snapCount:snaps.length};
+}
+
+function buildRiskReport(){
+  const m=calcRiskMetrics();
+  if(!m) return `<div style="text-align:center;padding:40px;color:var(--muted)">Not enough data yet — sync prices multiple times over several days to build history (${(state.portfolioSnapshots||[]).length} snapshots so far, need 5+)</div>`;
+  return `<div class="summary-grid" style="margin-top:16px">
+    ${card('📉 Max Drawdown',m.maxDrawdown.toFixed(2)+'%',m.maxDrawdown>20?'neg':m.maxDrawdown>10?'zero':'pos','Peak-to-trough decline')}
+    ${card('📊 Annualized Volatility',m.volatility.toFixed(2)+'%',m.volatility>30?'neg':m.volatility>15?'zero':'pos','Std dev of returns × √252')}
+    ${card('🟢 Best Single Sync',(m.bestReturn>=0?'+':'')+m.bestReturn.toFixed(2)+'%','pos','Largest single-period gain')}
+    ${card('🔴 Worst Single Sync',m.worstReturn.toFixed(2)+'%','neg','Largest single-period loss')}
+    ${card('📈 Total Return',(m.totalReturn>=0?'+':'')+m.totalReturn.toFixed(2)+'%',m.totalReturn>=0?'pos':'neg','Since first tracked snapshot')}
+    ${card('📅 Data Points',m.snapCount+'','','Portfolio value snapshots')}
+  </div>
+  <p style="margin-top:16px;font-size:11px;color:var(--muted)">Risk metrics are calculated from ${m.snapCount} portfolio value snapshots. Volatility is annualized assuming 252 trading days. More snapshots = more accurate metrics.</p>`;
+}
+
+// ─── REBALANCING ─────────────────────────────────────────────────────────────
+function buildRebalanceReport(){
+  const sectorVals={};
+  let total=0;
+  getSymbols().forEach(sym=>{
+    const inv=calcPnL(sym,'investing'),trd=calcPnL(sym,'trading');
+    const heldQty=inv.heldQty+trd.heldQty;
+    if(heldQty<=0) return;
+    const cp=state.currentPrices[sym]||0;
+    const val=cp?heldQty*cp:inv.heldCost+trd.heldCost;
+    const sec=state.sectorMap[sym]||'Unknown';
+    sectorVals[sec]=(sectorVals[sec]||0)+val;
+    total+=val;
+  });
+  if(!Object.keys(sectorVals).length) return '<div style="text-align:center;padding:40px;color:var(--muted)">Add holdings to see rebalancing suggestions</div>';
+
+  const tgts=state.targetAllocations||{};
+  const tgtSum=Object.values(tgts).reduce((a,b)=>a+(+b||0),0);
+
+  const rows=Object.entries(sectorVals).sort((a,b)=>b[1]-a[1]).map(([sec,val])=>{
+    const curPct=total>0?(val/total*100):0;
+    const tgt=tgts[sec]!=null?+tgts[sec]:'';
+    const delta=tgt!==''?(curPct-tgt):null;
+    const action=delta!==null&&Math.abs(delta)>0.5
+      ?(delta>0
+        ?`Sell ${fmt(val*Math.abs(delta)/100)} (overweight ${Math.abs(delta).toFixed(1)}%)`
+        :`Buy ${fmt(total*Math.abs(delta)/100)} (underweight ${Math.abs(delta).toFixed(1)}%)`)
+      :(delta!==null?'✅ On target':'');
+    const actionColor=delta===null?'':delta>2?'color:#ef4444':delta<-2?'color:#22c55e':'color:var(--muted)';
+    return`<tr>
+      <td><b>${sec}</b></td>
+      <td>${fmt(val)}</td>
+      <td>${curPct.toFixed(1)}%</td>
+      <td><input type="number" min="0" max="100" step="0.5" value="${tgt}" placeholder="0"
+        style="width:64px;background:var(--bg2,var(--surface2));border:1px solid var(--border);border-radius:4px;padding:3px 6px;color:var(--text);font-size:12px"
+        onchange="setTargetAllocation('${sec.replace(/'/g,"\\'")}',this.value)"/></td>
+      <td style="${actionColor};font-size:12px">${action}</td>
+    </tr>`;
+  }).join('');
+
+  const tgtWarn=tgtSum>0&&Math.abs(tgtSum-100)>1
+    ?`<div style="color:#f59e0b;font-size:12px;margin-bottom:12px">⚠️ Target allocations sum to ${tgtSum.toFixed(1)}% — adjust to reach 100%</div>`:'';
+
+  return`${tgtWarn}
+  <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Set target % for each sector. The tool will show how much to buy/sell to reach your targets.</p>
+  <div class="table-wrap">
+  <table><thead><tr><th>Sector</th><th>Current Value</th><th>Current %</th><th>Target %</th><th>Action</th></tr></thead>
+  <tbody>${rows}</tbody></table>
+  </div>
+  <p style="font-size:11px;color:var(--muted);margin-top:12px">Targets are saved automatically. Click Generate Report to refresh after changing targets.</p>`;
+}
+
+function setTargetAllocation(sector,val){
+  state.targetAllocations=state.targetAllocations||{};
+  const v=parseFloat(val);
+  if(isNaN(v)||v<0) delete state.targetAllocations[sector];
+  else state.targetAllocations[sector]=v;
+  save();
 }
 
 // ─── REPORTS ─────────────────────────────────────────────────────────────────
@@ -3236,9 +3485,10 @@ let reportType = 'statement';
 
 function setReportType(type) {
   reportType = type;
-  document.getElementById('rpt-btn-statement').classList.toggle('active', type==='statement');
-  document.getElementById('rpt-btn-pnl').classList.toggle('active', type==='pnl');
-  document.getElementById('rpt-btn-annual').classList.toggle('active', type==='annual');
+  ['statement','pnl','annual','risk','rebalance'].forEach(t=>{
+    const b=document.getElementById('rpt-btn-'+t);
+    if(b) b.classList.toggle('active',t===type);
+  });
   document.getElementById('rpt-period-row').style.display = type==='pnl' ? '' : 'none';
   document.getElementById('rpt-output').innerHTML = '';
   document.getElementById('rpt-actions-bar').style.display = 'none';
@@ -3250,6 +3500,10 @@ function generateReport() {
     html = buildStatementReport();
   } else if (reportType === 'annual') {
     html = buildAnnualReport();
+  } else if (reportType === 'risk') {
+    html = buildRiskReport();
+  } else if (reportType === 'rebalance') {
+    html = buildRebalanceReport();
   } else {
     const from = document.getElementById('rpt-from').value;
     const to   = document.getElementById('rpt-to').value;
@@ -3258,7 +3512,7 @@ function generateReport() {
     html = buildPnLReport(from, to);
   }
   document.getElementById('rpt-output').innerHTML = html;
-  document.getElementById('rpt-actions-bar').style.display = '';
+  document.getElementById('rpt-actions-bar').style.display = (reportType==='risk'||reportType==='rebalance')?'none':'';
 }
 
 function buildStatementReport() {
@@ -3522,13 +3776,18 @@ function updateCloudUI(){
   }
 }
 
+function getCloudDocRef(){
+  const pid=getActivePortfolioId();
+  const docId=pid==='default'?_fbUser.uid:_fbUser.uid+'_'+pid;
+  return _fbDb.collection('portfolios').doc(docId);
+}
 async function pushToCloud(){
   if(!_fbUser||!_fbDb)return;
   setCloudDot('syncing');
   const sl=document.getElementById('cloud-status-line');
   if(sl) sl.textContent='⏳ Saving…';
   try{
-    await _fbDb.collection('portfolios').doc(_fbUser.uid).set({
+    await getCloudDocRef().set({
       data: JSON.stringify(state),
       updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       email: _fbUser.email||''
@@ -3556,14 +3815,14 @@ async function loadFromCloud(){
   const sl=document.getElementById('cloud-status-line');
   if(sl) sl.textContent='⏳ Loading…';
   try{
-    const snap=await _fbDb.collection('portfolios').doc(_fbUser.uid).get();
+    const snap=await getCloudDocRef().get();
     if(snap.exists){
       _cloudLoading=true;
       const loaded=JSON.parse(snap.data().data||'{}');
       // merge: prefer cloud data but keep any freshly fetched prices
       const mergedPrices=Object.assign({},loaded.currentPrices||{},state.currentPrices||{});
       state=Object.assign({},loaded,{currentPrices:mergedPrices});
-      localStorage.setItem('pm_v2',JSON.stringify(state));
+      localStorage.setItem(getStateKey(),JSON.stringify(state));
       _cloudLoading=false;
       render();
       toast('☁️ Portfolio loaded from cloud!','success');
@@ -3687,6 +3946,196 @@ function submitSplit(){
   toast(`✅ ${from}:${to} split applied to ${affected.length} transaction(s) for ${sym}`,'success');
 }
 
+// ─── CSV IMPORT ───────────────────────────────────────────────────────────────
+let _csvParsed = [];
+
+function importTransactionsCSV() {
+  toggleDataMenu(true);
+  _csvParsed = [];
+  const input = document.createElement('input');
+  input.type = 'file'; input.accept = '.csv,.txt';
+  input.onchange = async e => {
+    const file = e.target.files[0]; if (!file) return;
+    const text = await file.text();
+    _csvParsed = parseTransactionCSV(text);
+    showCSVPreview(_csvParsed);
+    document.getElementById('csv-import-modal').classList.add('open');
+  };
+  input.click();
+}
+
+function parseTransactionCSV(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const rawHeaders = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+  const col = name => rawHeaders.indexOf(name);
+  const get = (row, name) => { const i = col(name); return i >= 0 ? (row[i]||'').trim().replace(/^["']|["']$/g, '') : ''; };
+  const results = [];
+  for (let i = 1; i < lines.length; i++) {
+    const row = lines[i].split(',');
+    const date = get(row,'date');
+    const type = (get(row,'type')||get(row,'action')).toLowerCase();
+    const sym = get(row,'symbol').toUpperCase();
+    const qty = parseFloat(get(row,'quantity')||get(row,'qty'));
+    const price = parseFloat(get(row,'price'));
+    if (!date || !sym || !qty || !price || !['buy','sell'].includes(type)) {
+      results.push({_error: `Row ${i+1}: missing/invalid required fields`, _raw: lines[i]});
+      continue;
+    }
+    const purpose = (['investing','trading'].includes(get(row,'purpose').toLowerCase()) ? get(row,'purpose').toLowerCase() : 'investing');
+    results.push({date, type, symbol: sym, quantity: qty, price, purpose,
+      name: get(row,'name') || sym, sector: get(row,'sector') || '', notes: get(row,'notes') || '', _valid: true});
+  }
+  return results;
+}
+
+function showCSVPreview(rows) {
+  const el = document.getElementById('csv-preview');
+  const valid = rows.filter(r => r._valid);
+  const errors = rows.filter(r => r._error);
+  const existing = state.transactions.map(t => `${t.date}|${t.symbol}|${t.type}|${t.quantity}|${t.price}`);
+  const dupes = valid.filter(r => existing.includes(`${r.date}|${r.symbol}|${r.type}|${r.quantity}|${r.price}`));
+  const fresh = valid.filter(r => !existing.includes(`${r.date}|${r.symbol}|${r.type}|${r.quantity}|${r.price}`));
+  let html = `<div style="margin-bottom:10px"><b style="color:var(--green)">${fresh.length} new</b> transactions to import`;
+  if (dupes.length) html += `, <b style="color:var(--muted)">${dupes.length} duplicates will be skipped</b>`;
+  if (errors.length) html += `, <b style="color:var(--red)">${errors.length} rows with errors</b>`;
+  html += '</div>';
+  if (fresh.length) {
+    html += `<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="color:var(--muted)">
+      <th style="text-align:left;padding:3px 6px">Date</th><th>Type</th><th>Symbol</th><th>Qty</th><th>Price</th><th>Purpose</th>
+    </tr></thead><tbody>`;
+    fresh.slice(0, 30).forEach(r => {
+      html += `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:3px 6px">${r.date}</td>
+        <td style="color:${r.type==='buy'?'var(--green)':'var(--red)'}">${r.type}</td>
+        <td><b>${r.symbol}</b></td><td>${r.quantity}</td><td>${r.price}</td><td>${r.purpose}</td>
+      </tr>`;
+    });
+    if (fresh.length > 30) html += `<tr><td colspan="6" style="padding:4px 6px;color:var(--muted)">…and ${fresh.length-30} more</td></tr>`;
+    html += '</tbody></table>';
+  }
+  if (errors.length) {
+    html += `<div style="margin-top:10px;color:var(--red);font-size:11px"><b>Errors:</b><br>${errors.map(e=>e._error).join('<br>')}</div>`;
+  }
+  el.innerHTML = html;
+  const btn = document.getElementById('csv-confirm-btn');
+  btn.style.display = fresh.length > 0 ? '' : 'none';
+  btn.textContent = `✅ Import ${fresh.length} Transaction${fresh.length!==1?'s':''}`;
+}
+
+function confirmCSVImport() {
+  const existing = state.transactions.map(t => `${t.date}|${t.symbol}|${t.type}|${t.quantity}|${t.price}`);
+  const fresh = _csvParsed.filter(r => r._valid && !existing.includes(`${r.date}|${r.symbol}|${r.type}|${r.quantity}|${r.price}`));
+  fresh.forEach(r => {
+    state.transactions.push({id: Date.now()+Math.random(), date: r.date, type: r.type, purpose: r.purpose,
+      symbol: r.symbol, name: r.name, quantity: r.quantity, price: r.price, notes: r.notes});
+    if (r.sector && r.symbol) state.sectorMap[r.symbol] = r.sector;
+  });
+  save(); render();
+  document.getElementById('csv-import-modal').classList.remove('open');
+  toast(`✅ Imported ${fresh.length} transaction${fresh.length!==1?'s':''}`, 'success');
+}
+
+// ─── MULTIPLE PORTFOLIOS ──────────────────────────────────────────────────────
+let _editingPortfolioId = null;
+const DEFAULT_PORTFOLIO = {id:'default', name:'Main Portfolio'};
+
+function initPortfolios() {
+  const list = getPortfolioList();
+  if (!list.find(p => p.id === 'default')) {
+    list.unshift(DEFAULT_PORTFOLIO);
+    localStorage.setItem('pm_portfolios', JSON.stringify(list));
+  }
+  updatePortfolioSwitcher();
+}
+
+function updatePortfolioSwitcher() {
+  const active = getActivePortfolioId();
+  const list = getPortfolioList();
+  const activeName = (list.find(p=>p.id===active)||DEFAULT_PORTFOLIO).name;
+  const lbl = document.getElementById('portfolio-label');
+  if (lbl) lbl.textContent = activeName;
+  const el = document.getElementById('portfolio-list');
+  if (!el) return;
+  el.innerHTML = list.map(p => `
+    <div class="theme-opt" style="display:flex;justify-content:space-between;align-items:center;${p.id===active?'font-weight:700;color:var(--accent)':''}">
+      <span onclick="doSwitchPortfolio('${p.id}')" style="flex:1;cursor:pointer">${p.id===active?'✓ ':''}${p.name}</span>
+      <span style="display:flex;gap:4px">
+        <button onclick="openRenamePortfolioModal('${p.id}','${p.name.replace(/'/g,"\\'")}');event.stopPropagation()" title="Rename" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:0 4px">✏️</button>
+        ${p.id!=='default'?`<button onclick="deletePortfolio('${p.id}');event.stopPropagation()" title="Delete" style="background:none;border:none;cursor:pointer;color:var(--red);padding:0 4px">🗑️</button>`:''}
+      </span>
+    </div>`).join('');
+}
+
+function togglePortfolioMenu() {
+  updatePortfolioSwitcher();
+  document.getElementById('portfolio-menu').classList.toggle('open');
+}
+
+function doSwitchPortfolio(pid) {
+  document.getElementById('portfolio-menu').classList.remove('open');
+  if (pid === getActivePortfolioId()) return;
+  save();
+  localStorage.setItem('pm_active', pid);
+  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{}};
+  load();
+  updatePortfolioSwitcher();
+  render();
+  if(state.lastSync) document.getElementById('sync-status').textContent='Last sync: '+new Date(state.lastSync).toLocaleTimeString();
+  else document.getElementById('sync-status').textContent='';
+  toast('Switched to: ' + (getPortfolioList().find(p=>p.id===pid)||{name:pid}).name, 'success');
+}
+
+function openCreatePortfolioModal() {
+  document.getElementById('portfolio-menu').classList.remove('open');
+  _editingPortfolioId = null;
+  document.getElementById('portfolio-modal-title').textContent = 'New Portfolio';
+  document.getElementById('portfolio-name-input').value = '';
+  document.getElementById('portfolio-modal').classList.add('open');
+}
+
+function openRenamePortfolioModal(pid, currentName) {
+  document.getElementById('portfolio-menu').classList.remove('open');
+  _editingPortfolioId = pid;
+  document.getElementById('portfolio-modal-title').textContent = 'Rename Portfolio';
+  document.getElementById('portfolio-name-input').value = currentName;
+  document.getElementById('portfolio-modal').classList.add('open');
+}
+
+function submitPortfolioModal() {
+  const name = document.getElementById('portfolio-name-input').value.trim();
+  if (!name) return toast('Enter a portfolio name', 'error');
+  const list = getPortfolioList();
+  if (_editingPortfolioId) {
+    const p = list.find(x=>x.id===_editingPortfolioId);
+    if (p) p.name = name;
+    localStorage.setItem('pm_portfolios', JSON.stringify(list));
+    document.getElementById('portfolio-modal').classList.remove('open');
+    updatePortfolioSwitcher();
+    toast('Portfolio renamed', 'success');
+  } else {
+    const id = 'p_' + Date.now();
+    list.push({id, name, createdAt: new Date().toISOString()});
+    localStorage.setItem('pm_portfolios', JSON.stringify(list));
+    document.getElementById('portfolio-modal').classList.remove('open');
+    doSwitchPortfolio(id);
+  }
+}
+
+function deletePortfolio(pid) {
+  if (pid === 'default') return;
+  const list = getPortfolioList();
+  const p = list.find(x=>x.id===pid);
+  if (!p) return;
+  if (!confirm(`Delete portfolio "${p.name}"?\n\nAll transactions, dividends, and settings for this portfolio will be permanently deleted.`)) return;
+  const filtered = list.filter(x=>x.id!==pid);
+  localStorage.setItem('pm_portfolios', JSON.stringify(filtered));
+  localStorage.removeItem(getStateKey(pid));
+  if (getActivePortfolioId() === pid) doSwitchPortfolio('default');
+  else updatePortfolioSwitcher();
+  toast(`Portfolio "${p.name}" deleted`, 'success');
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.getElementById('modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
 document.getElementById('wl-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeWatchlistModal();});
@@ -3694,6 +4143,9 @@ document.getElementById('calc-modal').addEventListener('click',e=>{if(e.target==
 document.getElementById('div-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeDivModal();});
 document.getElementById('alert-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAlertModal();});
 document.getElementById('split-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)document.getElementById('split-modal').classList.remove('open');});
+document.getElementById('csv-import-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
+document.getElementById('portfolio-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
+initPortfolios();
 load();
 // Save snapshot on load if prices exist
 if(Object.keys(state.currentPrices||{}).length>0) savePortfolioSnapshot();
