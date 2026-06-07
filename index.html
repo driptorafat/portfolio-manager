@@ -419,6 +419,10 @@ tbody td{padding:11px 14px;vertical-align:middle}
 .div-bonus{background:rgba(99,102,241,.15);color:var(--accent2)}
 .div-summary{display:flex;align-items:center;gap:6px;padding:8px 12px;background:var(--green-bg);border-radius:8px;border:1px solid rgba(34,197,94,.2);font-size:12px;color:var(--green);font-weight:600;margin-bottom:10px}
 
+/* ── PERFORMANCE RANGE BUTTONS ── */
+.perf-range-btn{padding:3px 9px;font-size:11px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer}
+.perf-range-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
 /* ── CLOUD SYNC ── */
 .cloud-user-btn{display:flex;align-items:center;gap:7px;padding:5px 10px;border-radius:8px;background:var(--surface2);border:1px solid var(--border);cursor:pointer;font-size:13px;color:var(--text);transition:all .2s;white-space:nowrap}
 .cloud-user-btn:hover{border-color:var(--accent2)}
@@ -565,6 +569,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
   <div class="topbar-actions">
     <!-- Theme picker -->
     <button class="btn-sync btn-calc-full" onclick="openCalcModal()" style="white-space:nowrap">⚡ Calculator</button>
+    <button class="btn-sync" onclick="openAlertModal()" title="Price Alerts" style="white-space:nowrap">🔔</button>
     <div class="theme-wrap" id="data-wrap">
       <button class="btn-theme" onclick="toggleDataMenu()" title="Backup &amp; Restore">💾</button>
       <div class="theme-menu" id="data-menu">
@@ -625,6 +630,21 @@ tbody td{padding:11px 14px;vertical-align:middle}
   <!-- ══ DASHBOARD ══ -->
   <div id="page-dashboard" class="page active">
     <div class="summary-grid" id="summary-cards"></div>
+
+    <!-- Portfolio Performance Chart -->
+    <div class="chart-card" style="margin-bottom:18px">
+      <div class="chart-card-title">
+        <span>📈 Portfolio Performance</span>
+        <div style="display:flex;gap:4px" id="perf-range-btns">
+          <button class="perf-range-btn" onclick="setPerfRange('1M')">1M</button>
+          <button class="perf-range-btn" onclick="setPerfRange('3M')">3M</button>
+          <button class="perf-range-btn" onclick="setPerfRange('6M')">6M</button>
+          <button class="perf-range-btn" onclick="setPerfRange('1Y')">1Y</button>
+          <button class="perf-range-btn active" onclick="setPerfRange('ALL')">ALL</button>
+        </div>
+      </div>
+      <div id="perf-chart"></div>
+    </div>
 
     <!-- Row: Sector Chart + Holdings -->
     <div class="dash-row dash-row-4" style="margin-bottom:18px">
@@ -726,6 +746,12 @@ tbody td{padding:11px 14px;vertical-align:middle}
 
   <!-- ══ DIVIDENDS ══ -->
   <div id="page-dividends" class="page">
+    <div class="chart-card" style="margin-bottom:20px">
+      <div class="chart-card-title">📅 Dividend Calendar
+        <span id="div-cal-projection" style="font-size:12px;color:var(--green);margin-left:12px;font-weight:400"></span>
+      </div>
+      <div id="div-calendar" style="overflow-x:auto"></div>
+    </div>
     <div class="summary-grid" id="div-page-summary"></div>
 
     <div class="section-head">
@@ -1085,6 +1111,44 @@ tbody td{padding:11px 14px;vertical-align:middle}
   </div>
 </div>
 
+<!-- PRICE ALERTS MODAL -->
+<div class="modal-overlay" id="alert-modal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-title">🔔 Price Alerts</div>
+    <!-- Add form -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
+      <div style="font-size:12px;font-weight:700;color:var(--accent2);margin-bottom:10px">Set New Alert</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Symbol *</label>
+          <input id="al-symbol" placeholder="e.g. ACI" oninput="this.value=this.value.toUpperCase()"/>
+        </div>
+        <div class="form-group">
+          <label>Target Price (৳) *</label>
+          <input id="al-price" type="number" step="any" min="0" placeholder="0.00"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Condition</label>
+        <div class="type-toggle" style="margin-bottom:0">
+          <button class="type-btn active-buy" id="al-btn-above" onclick="setAlertCond('above')">▲ Price Above</button>
+          <button class="type-btn" id="al-btn-below" onclick="setAlertCond('below')">▼ Price Below</button>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Note (optional)</label>
+        <input id="al-note" placeholder="e.g. Take profit level"/>
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-bottom:16px;margin-top:0">
+      <button class="btn-cancel" onclick="closeAlertModal()">Close</button>
+      <button class="btn-primary" onclick="submitAlert()">Set Alert</button>
+    </div>
+    <!-- Active alerts list -->
+    <div id="al-list"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1290,6 +1354,429 @@ function calcAlerts() {
   return alerts.slice(0,6);
 }
 
+// ─── PORTFOLIO SNAPSHOT ───────────────────────────────────────────────────────
+function savePortfolioSnapshot(){
+  const today=new Date().toISOString().split('T')[0];
+  const syms=getSymbols();
+  let totalValue=0,totalCost=0,realizedPnL=0;
+  syms.forEach(sym=>{
+    const inv=calcPnL(sym,'investing');
+    const trd=calcPnL(sym,'trading');
+    const ds=getDivStats(sym);
+    const cp=state.currentPrices[sym]||0;
+    const heldQty=(inv.heldQty+trd.heldQty)+ds.totalBonusShares;
+    const heldCost=inv.heldCost+trd.heldCost;
+    totalCost+=heldCost;
+    realizedPnL+=inv.realized+trd.realized;
+    if(cp&&heldQty>0) totalValue+=heldQty*cp; else totalValue+=heldCost;
+  });
+  if(totalCost===0&&totalValue===0) return;
+  const snaps=state.portfolioSnapshots||[];
+  // Remove existing entry for today (keep latest)
+  const filtered=snaps.filter(s=>s.date!==today);
+  filtered.push({date:today,totalValue,totalCost,realizedPnL});
+  // Keep last 730 entries sorted by date
+  filtered.sort((a,b)=>a.date.localeCompare(b.date));
+  state.portfolioSnapshots=filtered.slice(-730);
+}
+
+// Reconstruct cost history from transactions — returns [{date, totalCost}]
+function buildCostHistory(){
+  const txs=[...state.transactions].filter(t=>t.type==='buy').sort((a,b)=>a.date.localeCompare(b.date));
+  if(!txs.length) return [];
+  // Unique dates of all transactions (buy+sell)
+  const allDates=[...new Set(state.transactions.map(t=>t.date))].sort();
+  const result=[];
+  allDates.forEach(date=>{
+    // Compute total held cost at end of this date using mini-FIFO
+    const syms=[...new Set(state.transactions.map(t=>t.symbol))];
+    let totalHeldCost=0;
+    syms.forEach(sym=>{
+      const buys=state.transactions.filter(t=>t.symbol===sym&&t.type==='buy'&&t.date<=date).sort((a,b)=>a.date.localeCompare(b.date));
+      const sells=state.transactions.filter(t=>t.symbol===sym&&t.type==='sell'&&t.date<=date).sort((a,b)=>a.date.localeCompare(b.date));
+      const lots=buys.map(b=>({price:b.price,remaining:b.quantity}));
+      for(const sell of sells){
+        let rem=sell.quantity;
+        for(const lot of lots){if(lot.remaining<=0)continue;const n=Math.min(lot.remaining,rem);lot.remaining-=n;rem-=n;if(rem<=0)break;}
+      }
+      totalHeldCost+=lots.reduce((s,l)=>s+l.remaining*l.price,0);
+    });
+    result.push({date,totalCost:totalHeldCost});
+  });
+  return result;
+}
+
+// ─── PERFORMANCE CHART ────────────────────────────────────────────────────────
+let perfRange='ALL';
+function setPerfRange(r){
+  perfRange=r;
+  document.querySelectorAll('.perf-range-btn').forEach(b=>{
+    b.classList.toggle('active',b.textContent===r);
+  });
+  renderPerfChart();
+}
+
+function fmtYAxis(n){
+  if(n>=1e7) return (n/1e7).toFixed(1)+'Cr';
+  if(n>=1e5) return (n/1e5).toFixed(1)+'L';
+  if(n>=1e3) return (n/1e3).toFixed(0)+'K';
+  return n.toFixed(0);
+}
+
+function renderPerfChart(){
+  const el=document.getElementById('perf-chart'); if(!el) return;
+  const snaps=(state.portfolioSnapshots||[]).filter(s=>s.totalValue>0||s.totalCost>0);
+  const costHist=buildCostHistory();
+  if(snaps.length<2&&costHist.length<2){
+    el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:30px 0;text-align:center">Sync prices to start tracking your portfolio performance over time</div>';
+    return;
+  }
+
+  // Filter by range
+  const now=new Date();
+  const cutoff={
+    '1M':new Date(now.getFullYear(),now.getMonth()-1,now.getDate()),
+    '3M':new Date(now.getFullYear(),now.getMonth()-3,now.getDate()),
+    '6M':new Date(now.getFullYear(),now.getMonth()-6,now.getDate()),
+    '1Y':new Date(now.getFullYear()-1,now.getMonth(),now.getDate()),
+    'ALL':new Date(0)
+  }[perfRange];
+  const cutStr=cutoff.toISOString().split('T')[0];
+  const filtSnaps=snaps.filter(s=>s.date>=cutStr);
+  const filtCost=costHist.filter(s=>s.date>=cutStr);
+
+  // Merge all dates
+  const allDates=[...new Set([...filtSnaps.map(s=>s.date),...filtCost.map(s=>s.date)])].sort();
+  if(allDates.length<1){
+    el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:30px 0;text-align:center">No data in selected range</div>';
+    return;
+  }
+
+  // Build value and cost series aligned to allDates
+  const valMap=Object.fromEntries(filtSnaps.map(s=>[s.date,s.totalValue]));
+  const costMap={};
+  filtCost.forEach(s=>{costMap[s.date]=s.totalCost;});
+
+  // Forward-fill value (only available on snap dates)
+  const valueSeries=[], costSeries=[], labelDates=[];
+  let lastVal=null, lastCost=null;
+  allDates.forEach(d=>{
+    if(valMap[d]!==undefined) lastVal=valMap[d];
+    if(costMap[d]!==undefined) lastCost=costMap[d];
+    if(lastVal!==null||lastCost!==null){
+      valueSeries.push(lastVal);
+      costSeries.push(lastCost);
+      labelDates.push(d);
+    }
+  });
+  if(labelDates.length<2){
+    el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:30px 0;text-align:center">Not enough data yet — sync a few more times to see the chart</div>';
+    return;
+  }
+
+  // Chart dims
+  const W=800,H=180,pT=10,pB=30,pL=62,pR=20;
+  const cW=W-pL-pR, cH=H-pT-pB;
+  const n=labelDates.length;
+
+  // Compute min/max across both series (excluding nulls)
+  const allVals=[...valueSeries,...costSeries].filter(v=>v!==null);
+  let minV=Math.min(...allVals), maxV=Math.max(...allVals);
+  const pad=(maxV-minV)*0.1||maxV*0.1||1000;
+  minV-=pad; maxV+=pad;
+  const range=maxV-minV;
+
+  const xOf=i=>pL+i/(n-1)*cW;
+  const yOf=v=>pT+cH-(v-minV)/range*cH;
+
+  // Is latest value a gain?
+  const latestVal=valueSeries[valueSeries.length-1];
+  const latestCost=costSeries[costSeries.length-1];
+  const isGain=(latestVal!==null&&latestCost!==null)?latestVal>=latestCost:true;
+  const valColor=isGain?'#22c55e':'#ef4444';
+  const costColor='#6366f1';
+
+  // Build polyline point strings (skip nulls)
+  function buildPoints(series){
+    return series.map((v,i)=>v!==null?`${xOf(i).toFixed(1)},${yOf(v).toFixed(1)}`:null).filter(Boolean).join(' ');
+  }
+  function buildAreaPath(series){
+    const pts=series.map((v,i)=>v!==null?{x:xOf(i),y:yOf(v)}:null).filter(Boolean);
+    if(!pts.length) return '';
+    const base=pT+cH;
+    return `M${pts[0].x.toFixed(1)},${base} `+pts.map(p=>`L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')+` L${pts[pts.length-1].x.toFixed(1)},${base} Z`;
+  }
+
+  // Y axis grid (4 ticks)
+  let gridLines='', yLabels='';
+  for(let i=0;i<=3;i++){
+    const v=minV+(range/3)*i;
+    const y=yOf(v);
+    gridLines+=`<line x1="${pL}" y1="${y.toFixed(1)}" x2="${W-pR}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="0.8" stroke-dasharray="4,4"/>`;
+    yLabels+=`<text x="${(pL-5).toFixed(0)}" y="${(y+3).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="9" font-family="system-ui">৳${fmtYAxis(v)}</text>`;
+  }
+
+  // X axis date labels (4 ticks)
+  let xLabels='';
+  const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const xTickIdxs=[0,Math.floor(n/3),Math.floor(2*n/3),n-1].filter((v,i,a)=>a.indexOf(v)===i);
+  xTickIdxs.forEach(i=>{
+    const d=labelDates[i];
+    const [y,m,day]=d.split('-');
+    const lbl=`${day} ${MONTHS[parseInt(m)-1]} ${y.slice(2)}`;
+    xLabels+=`<text x="${xOf(i).toFixed(1)}" y="${H-4}" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui">${lbl}</text>`;
+  });
+
+  const valPts=buildPoints(valueSeries);
+  const costPts=buildPoints(costSeries);
+  const valArea=buildAreaPath(valueSeries);
+  const costArea=buildAreaPath(costSeries);
+
+  // Latest dots
+  const lastValIdx=valueSeries.map((v,i)=>v!==null?i:-1).filter(i=>i>=0).pop();
+  const lastCostIdx=costSeries.map((v,i)=>v!==null?i:-1).filter(i=>i>=0).pop();
+  const dotVal=lastValIdx!=null?`<circle cx="${xOf(lastValIdx).toFixed(1)}" cy="${yOf(valueSeries[lastValIdx]).toFixed(1)}" r="4" fill="${valColor}" stroke="var(--surface)" stroke-width="2"/>`:'';
+  const dotCost=lastCostIdx!=null?`<circle cx="${xOf(lastCostIdx).toFixed(1)}" cy="${yOf(costSeries[lastCostIdx]).toFixed(1)}" r="4" fill="${costColor}" stroke="var(--surface)" stroke-width="2"/>`:'';
+
+  const valGradId='vg'+Date.now(), costGradId='cg'+Date.now();
+
+  el.innerHTML=`
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)">
+      <svg width="24" height="6"><line x1="0" y1="3" x2="24" y2="3" stroke="${costColor}" stroke-width="2" stroke-dasharray="5,3"/></svg>
+      Invested (Cost Basis)
+    </div>
+    <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)">
+      <svg width="24" height="6"><line x1="0" y1="3" x2="24" y2="3" stroke="${valColor}" stroke-width="2"/></svg>
+      Portfolio Value
+    </div>
+    ${latestVal!==null&&latestCost!==null?`<div style="margin-left:auto;font-size:11px;color:${valColor};font-weight:600">${isGain?'▲':'▼'} ${latestCost>0?((latestVal-latestCost)/latestCost*100).toFixed(2)+'%':'—'} unrealized</div>`:''}
+  </div>
+  <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">
+    <defs>
+      <linearGradient id="${valGradId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${valColor}" stop-opacity="0.18"/>
+        <stop offset="100%" stop-color="${valColor}" stop-opacity="0.01"/>
+      </linearGradient>
+      <linearGradient id="${costGradId}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${costColor}" stop-opacity="0.12"/>
+        <stop offset="100%" stop-color="${costColor}" stop-opacity="0.01"/>
+      </linearGradient>
+    </defs>
+    ${gridLines}
+    ${yLabels}
+    ${costArea?`<path d="${costArea}" fill="url(#${costGradId})"/>`:''}
+    ${valArea?`<path d="${valArea}" fill="url(#${valGradId})"/>`:''}
+    ${costPts?`<polyline points="${costPts}" fill="none" stroke="${costColor}" stroke-width="1.5" stroke-dasharray="6,4" stroke-linejoin="round"/>`:''}
+    ${valPts?`<polyline points="${valPts}" fill="none" stroke="${valColor}" stroke-width="2" stroke-linejoin="round"/>`:''}
+    ${dotVal}${dotCost}
+    ${xLabels}
+  </svg>`;
+}
+
+// ─── PRICE ALERTS ─────────────────────────────────────────────────────────────
+let alertCond='above';
+function setAlertCond(c){
+  alertCond=c;
+  document.getElementById('al-btn-above').className='type-btn'+(c==='above'?' active-buy':'');
+  document.getElementById('al-btn-below').className='type-btn'+(c==='below'?' active-sell':'');
+}
+function openAlertModal(){
+  renderAlertList();
+  document.getElementById('alert-modal').classList.add('open');
+}
+function closeAlertModal(){ document.getElementById('alert-modal').classList.remove('open'); }
+function requestNotifPermission(){
+  if('Notification' in window && Notification.permission==='default'){
+    Notification.requestPermission();
+  }
+}
+function submitAlert(){
+  const symbol=document.getElementById('al-symbol').value.trim().toUpperCase();
+  const targetPrice=parseFloat(document.getElementById('al-price').value);
+  const note=document.getElementById('al-note').value.trim();
+  if(!symbol) return toast('Enter a symbol','error');
+  if(!targetPrice||targetPrice<=0) return toast('Enter a valid target price','error');
+  requestNotifPermission();
+  state.priceAlerts=state.priceAlerts||[];
+  state.priceAlerts.push({
+    id:Date.now()+Math.random(),symbol,condition:alertCond,targetPrice,note,active:true,
+    createdAt:new Date().toISOString().split('T')[0]
+  });
+  save();
+  document.getElementById('al-symbol').value='';
+  document.getElementById('al-price').value='';
+  document.getElementById('al-note').value='';
+  toast(`Price alert set: ${symbol} ${alertCond} ৳${targetPrice}`,'success');
+  renderAlertList();
+}
+function removeAlert(id){
+  state.priceAlerts=(state.priceAlerts||[]).filter(a=>a.id!==id);
+  save(); renderAlertList();
+}
+function renderAlertList(){
+  const el=document.getElementById('al-list'); if(!el) return;
+  const alerts=(state.priceAlerts||[]).slice().reverse();
+  if(!alerts.length){el.innerHTML='<div style="color:var(--muted);font-size:12px;text-align:center;padding:16px 0">No alerts set yet</div>';return;}
+  const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  el.innerHTML=`<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Active Alerts</div>`+
+    alerts.map(a=>{
+      const cp=state.currentPrices[a.symbol]||0;
+      const triggered=!a.active;
+      const gap=cp&&a.targetPrice?((cp-a.targetPrice)/a.targetPrice*100):null;
+      return`<div class="alert-item ${triggered?'muted':a.condition==='above'?'good':'info'}" style="margin-bottom:6px;justify-content:space-between">
+        <div style="display:flex;align-items:flex-start;gap:8px;flex:1">
+          <span>${triggered?'🔕':'🔔'}</span>
+          <div>
+            <div style="font-weight:700;font-size:13px">${a.symbol} <span style="font-weight:400;font-size:11px;color:var(--muted)">${a.condition==='above'?'▲ above':'▼ below'} ৳${a.targetPrice}</span></div>
+            ${a.note?`<div style="font-size:11px;color:var(--muted)">${a.note}</div>`:''}
+            ${cp?`<div style="font-size:11px;color:var(--muted)">Current: ৳${cp}${gap!==null?' ('+( gap>=0?'+':'')+gap.toFixed(1)+'% gap)':''}</div>`:''}
+            ${triggered?`<div style="font-size:10px;color:var(--muted)">Triggered ${a.triggeredAt||''}</div>`:''}
+          </div>
+        </div>
+        <button class="btn-icon" onclick="removeAlert(${a.id})" style="flex-shrink:0">✕</button>
+      </div>`;
+    }).join('');
+}
+function checkPriceAlerts(){
+  const alerts=(state.priceAlerts||[]).filter(a=>a.active);
+  if(!alerts.length) return;
+  let triggered=false;
+  alerts.forEach(a=>{
+    const cp=state.currentPrices[a.symbol];
+    if(!cp) return;
+    const hit=(a.condition==='above'&&cp>=a.targetPrice)||(a.condition==='below'&&cp<=a.targetPrice);
+    if(!hit) return;
+    a.active=false;
+    a.triggeredAt=new Date().toISOString().split('T')[0];
+    triggered=true;
+    const msg=`🔔 ${a.symbol} is now ৳${cp} — ${a.condition==='above'?'above':'below'} your target of ৳${a.targetPrice}${a.note?' ('+a.note+')':''}`;
+    toast(msg,'success');
+    if('Notification' in window && Notification.permission==='granted'){
+      try{ new Notification('Price Alert: '+a.symbol,{body:msg.replace(/🔔 /,'')}); }catch(e){}
+    }
+  });
+  if(triggered) save();
+}
+
+// ─── DIVIDEND CALENDAR ────────────────────────────────────────────────────────
+function renderDivCalendar(){
+  const calEl=document.getElementById('div-calendar');
+  const projEl=document.getElementById('div-cal-projection');
+  if(!calEl) return;
+  const divs=state.dividends||[];
+  if(!divs.length){
+    calEl.innerHTML='<div style="color:var(--muted);font-size:12px;padding:20px 0;text-align:center">No dividends recorded yet</div>';
+    if(projEl) projEl.textContent='';
+    return;
+  }
+
+  const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const today=new Date();
+  const thisYear=today.getFullYear();
+  const thisMonth=today.getMonth(); // 0-based
+
+  // Build 24 months: last 18 past + 6 future
+  const months=[];
+  for(let i=-18;i<=5;i++){
+    let m=thisMonth+i, y=thisYear;
+    while(m<0){m+=12;y--;}
+    while(m>11){m-=12;y++;}
+    months.push({year:y,month:m});
+  }
+
+  // Aggregate actual dividends per month-year
+  const cashByMonth={};
+  const bonusByMonth={};
+  divs.forEach(d=>{
+    const [y,mo]=d.date.split('-').map(Number);
+    const key=`${y}-${String(mo).padStart(2,'0')}`;
+    const cash=d.cashAmount!=null?d.cashAmount:(d.type==='cash'?d.amount||0:0);
+    const bonus=d.bonusShares!=null?d.bonusShares:(d.type==='bonus'?d.amount||0:0);
+    if(cash>0) cashByMonth[key]=(cashByMonth[key]||0)+cash;
+    if(bonus>0) bonusByMonth[key]=(bonusByMonth[key]||0)+bonus;
+  });
+
+  // Annual income (last 12 months)
+  let annualIncome=0;
+  for(let i=0;i<12;i++){
+    let m=thisMonth-i, y=thisYear;
+    if(m<0){m+=12;y--;}
+    const key=`${y}-${String(m+1).padStart(2,'0')}`;
+    annualIncome+=(cashByMonth[key]||0);
+  }
+  if(projEl) projEl.textContent=annualIncome>0?`Annual Income Projection: ৳${annualIncome.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})} (based on last 12 months)`:'';
+
+  // Build bar data
+  const bars=months.map(({year,month})=>{
+    const key=`${year}-${String(month+1).padStart(2,'0')}`;
+    const isFuture=year>thisYear||(year===thisYear&&month>thisMonth);
+    const cash=cashByMonth[key]||0;
+    const bonus=bonusByMonth[key]||0;
+
+    let projected=false;
+    let projCash=0;
+    if(isFuture){
+      // Same calendar month last year
+      const prevKey=`${year-1}-${String(month+1).padStart(2,'0')}`;
+      projCash=cashByMonth[prevKey]||0;
+      if(projCash>0) projected=true;
+    }
+    return{year,month,key,cash,bonus,projected,projCash};
+  });
+
+  const maxCash=Math.max(...bars.map(b=>Math.max(b.cash,b.projCash)),1);
+  const BAR_W=34, BAR_GAP=6, AREA_H=100, LABEL_H=28, TOP_PAD=18;
+  const totalW=(BAR_W+BAR_GAP)*bars.length+BAR_GAP;
+  const svgH=AREA_H+LABEL_H+TOP_PAD;
+
+  const svgBars=bars.map((b,i)=>{
+    const x=BAR_GAP+i*(BAR_W+BAR_GAP);
+    const today2=new Date(); const isCurrentMonth=b.year===today2.getFullYear()&&b.month===today2.getMonth();
+    let barSvg='';
+
+    if(b.cash>0||b.bonus>0){
+      // Actual bar
+      const bH=Math.max(3,(b.cash/maxCash)*AREA_H*0.88);
+      const y=TOP_PAD+AREA_H-bH;
+      barSvg+=`<rect x="${x}" y="${y.toFixed(1)}" width="${BAR_W}" height="${bH.toFixed(1)}" fill="#22c55e" opacity="0.85" rx="3"/>`;
+      // Label above bar
+      if(b.cash>0){
+        const lbl=b.cash>=1e5?(b.cash/1e5).toFixed(1)+'L':b.cash>=1000?(b.cash/1000).toFixed(1)+'K':b.cash.toFixed(0);
+        barSvg+=`<text x="${(x+BAR_W/2).toFixed(1)}" y="${(y-3).toFixed(1)}" text-anchor="middle" fill="#22c55e" font-size="8" font-family="system-ui">৳${lbl}</text>`;
+      }
+      if(b.bonus>0){
+        barSvg+=`<text x="${(x+BAR_W/2).toFixed(1)}" y="${(TOP_PAD+AREA_H+12).toFixed(1)}" text-anchor="middle" fill="#818cf8" font-size="7.5" font-family="system-ui">+${b.bonus}</text>`;
+      }
+    } else if(b.projected&&b.projCash>0){
+      // Projected (dashed outline)
+      const bH=Math.max(3,(b.projCash/maxCash)*AREA_H*0.88);
+      const y=TOP_PAD+AREA_H-bH;
+      barSvg+=`<rect x="${x}" y="${y.toFixed(1)}" width="${BAR_W}" height="${bH.toFixed(1)}" fill="rgba(168,85,247,0.08)" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4,3" rx="3"/>`;
+      const lbl=b.projCash>=1e5?(b.projCash/1e5).toFixed(1)+'L':b.projCash>=1000?(b.projCash/1000).toFixed(1)+'K':b.projCash.toFixed(0);
+      barSvg+=`<text x="${(x+BAR_W/2).toFixed(1)}" y="${(y-3).toFixed(1)}" text-anchor="middle" fill="#a855f7" font-size="8" font-family="system-ui">~৳${lbl}</text>`;
+    } else {
+      // Empty slot
+      barSvg+=`<rect x="${x}" y="${(TOP_PAD+AREA_H-4).toFixed(1)}" width="${BAR_W}" height="4" fill="var(--border)" rx="2" opacity="0.4"/>`;
+    }
+
+    // Month label
+    const shortLbl=b.month===0||b.year!==bars[i>0?i-1:0].year?`${MONTHS[b.month]} ${String(b.year).slice(2)}`:(isCurrentMonth?`${MONTHS[b.month]}★`:MONTHS[b.month]);
+    barSvg+=`<text x="${(x+BAR_W/2).toFixed(1)}" y="${(TOP_PAD+AREA_H+22).toFixed(1)}" text-anchor="middle" fill="${isCurrentMonth?'var(--accent2)':'#64748b'}" font-size="8.5" font-family="system-ui" font-weight="${isCurrentMonth?700:400}">${shortLbl}</text>`;
+
+    return barSvg;
+  }).join('');
+
+  // Legend
+  const legend=`<div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:11px;color:var(--muted)">
+    <div style="display:flex;align-items:center;gap:5px"><svg width="12" height="12"><rect width="12" height="12" rx="2" fill="#22c55e" opacity="0.85"/></svg> Received</div>
+    <div style="display:flex;align-items:center;gap:5px"><svg width="12" height="12"><rect width="12" height="12" rx="2" fill="rgba(168,85,247,.08)" stroke="#a855f7" stroke-width="1.5" stroke-dasharray="4,3"/></svg> Projected</div>
+    <div style="display:flex;align-items:center;gap:5px"><svg width="12" height="12"><rect y="8" width="12" height="4" rx="1" fill="var(--border)" opacity="0.6"/></svg> No dividend</div>
+  </div>`;
+
+  calEl.innerHTML=legend+`<svg viewBox="0 0 ${totalW} ${svgH}" style="min-width:${totalW}px;height:${svgH}px;display:block">${svgBars}</svg>`;
+}
+
 // ─── SECTOR COLORS ────────────────────────────────────────────────────────────
 const SECTOR_COLORS = {
   'Bank':'#3b82f6','Pharmaceuticals & Chemicals':'#10b981','Telecommunication':'#6366f1',
@@ -1304,7 +1791,7 @@ const FALLBACK_COLORS=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#8b5cf
 function getSectorColor(s,i){ return SECTOR_COLORS[s]||FALLBACK_COLORS[i%FALLBACK_COLORS.length]; }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{} };
+let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[] };
 // Cloud sync globals
 let _fbAuth=null,_fbDb=null,_fbUser=null,_saveTimer=null,_cloudLoading=false;
 let formType='buy', formPurpose='investing', editingId=null;
@@ -1457,7 +1944,8 @@ async function syncFromDSE(){
       await new Promise(r=>setTimeout(r,300));
     }
     state.lastSync=new Date().toISOString();
-    save(); renderInvesting(); render();
+    savePortfolioSnapshot();
+    save(); checkPriceAlerts(); renderInvesting(); render();
     const label=priceLabel==='close'?'Last close':'Live';
     document.getElementById('sync-status').textContent=`${label} prices · ${new Date(state.lastSync).toLocaleTimeString()}`;
     if(updated>0){
@@ -1892,12 +2380,23 @@ function renderDashboard(){
 
   // ── Smart Alerts ──
   const alerts=calcAlerts();
+  // Add active price alerts to the widget
+  const priceAlertItems=(state.priceAlerts||[]).filter(a=>a.active).map(a=>{
+    const cp=state.currentPrices[a.symbol]||0;
+    const gap=cp&&a.targetPrice?((cp-a.targetPrice)/a.targetPrice*100):null;
+    return{type:'info',icon:'🔔',
+      msg:`<b>Price Alert</b>: ${a.symbol} ${a.condition==='above'?'▲ above':'▼ below'} ৳${a.targetPrice}${cp?` — current ৳${cp}${gap!==null?' ('+( gap>=0?'+':'')+gap.toFixed(1)+'% gap)':''}`:''}`};
+  });
+  const allAlerts=[...alerts,...priceAlertItems];
   document.getElementById('alerts-widget').innerHTML=
-    `<div style="display:flex;flex-direction:column;gap:6px">${alerts.map(a=>
+    `<div style="display:flex;flex-direction:column;gap:6px">${allAlerts.slice(0,8).map(a=>
       `<div class="alert-item ${a.type}">
          <span class="alert-icon">${a.icon}</span>
          <span style="color:var(--text)">${a.msg}</span>
        </div>`).join('')}</div>`;
+
+  // ── Performance Chart ──
+  renderPerfChart();
 }
 
 function renderDonut(data){
@@ -2065,6 +2564,7 @@ function renderInvesting(){
 
 // ─── DIVIDENDS TAB ────────────────────────────────────────────────────────────
 function renderDividends(){
+  renderDivCalendar();
   const syms=getSymbols();
   const divs=state.dividends||[];
   let totCashIncome=0,totBonusShares=0,totBonusValue=0,totOrigCost=0;
@@ -2584,7 +3084,7 @@ function importData() {
 function clearAllData() {
   toggleDataMenu(true);
   if(!confirm('Delete ALL portfolio data permanently?\n\nThis cannot be undone. Export a backup first if needed.')) return;
-  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null};
+  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,portfolioSnapshots:[],priceAlerts:[]};
   save(); render();
   document.getElementById('sync-status').textContent='';
   toast('All data cleared','success');
@@ -2960,7 +3460,10 @@ document.getElementById('modal').addEventListener('click',e=>{if(e.target===e.cu
 document.getElementById('wl-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeWatchlistModal();});
 document.getElementById('calc-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCalcModal();});
 document.getElementById('div-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeDivModal();});
+document.getElementById('alert-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAlertModal();});
 load();
+// Save snapshot on load if prices exist
+if(Object.keys(state.currentPrices||{}).length>0) savePortfolioSnapshot();
 const savedTheme=localStorage.getItem('pm_theme')||'dark';
 setTheme(savedTheme);
 render();
