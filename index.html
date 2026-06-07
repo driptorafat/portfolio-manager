@@ -295,6 +295,30 @@ tbody td{padding:11px 14px;vertical-align:middle}
 .mobile-tab.active{color:var(--accent2)}
 .mobile-tab svg{width:19px;height:19px}
 
+/* ── 1440px — MacBook Air M1 (1440×900 native CSS pixels) ── */
+@media(max-width:1440px){
+  .topbar{gap:6px;padding:0 16px}
+  .nav-tab{padding:6px 10px;font-size:12px}
+  .topbar-actions{gap:5px}
+  .btn-sync{padding:6px 10px;font-size:12px}
+}
+
+/* ── 1300px — MacBook Air M1 at scaled / 1280 wide ── */
+@media(max-width:1300px){
+  /* Collapse text labels — keep only icons */
+  #portfolio-label{display:none!important}
+  #portfolio-btn{padding:6px 8px}
+  .calc-label{display:none}
+  .btn-calc-full{padding:6px 10px}
+  #btn-sync .sync-label{display:none}
+  #btn-cloud-login .sync-label{display:none}
+  /* Shrink nav tabs to fit */
+  .nav-tabs{max-width:calc(100vw - 340px);overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .nav-tabs::-webkit-scrollbar{display:none}
+  .nav-tab{padding:5px 9px;font-size:12px}
+  .logo-full{font-size:15px}
+}
+
 /* ── 1200px — small laptop ── */
 @media(max-width:1200px){
   .dash-row-2{grid-template-columns:1fr}
@@ -324,6 +348,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
   .logo-short{display:inline!important}
   .topbar-actions{margin-left:auto;gap:4px;flex-shrink:0}
   .btn-calc-full{display:none}
+  .portfolio-wrap{display:none}
   .btn-sync{padding:6px 8px;font-size:12px}
   #btn-sync .sync-label{display:none}
   #btn-cloud-login{padding:6px 8px;gap:0}
@@ -581,7 +606,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
       </div>
     </div>
     <!-- Theme picker -->
-    <button class="btn-sync btn-calc-full" onclick="openCalcModal()" style="white-space:nowrap">⚡ Calculator</button>
+    <button class="btn-sync btn-calc-full" onclick="openCalcModal()" style="white-space:nowrap">⚡ <span class="calc-label">Calculator</span></button>
     <button class="btn-sync" onclick="openAlertModal()" title="Price Alerts" style="white-space:nowrap">🔔</button>
     <div class="theme-wrap" id="data-wrap">
       <button class="btn-theme" onclick="toggleDataMenu()" title="Backup &amp; Restore">💾</button>
