@@ -1495,33 +1495,34 @@ function savePortfolioSnapshot(){
   state.portfolioSnapshots=filtered.slice(-730);
 }
 
-async function fetchAndSaveDSEX(){
-  const proxies=[
-    'https://corsproxy.io/?',
-    'https://api.codetabs.com/v1/proxy?quest=',
-    'https://api.allorigins.win/raw?url='
-  ];
-  const target='https://www.dsebd.org/market_summary.php';
-  for(const proxy of proxies){
-    try{
-      const res=await fetch(proxy+encodeURIComponent(target),{signal:AbortSignal.timeout(6000)});
-      if(!res.ok) continue;
-      const html=await res.text();
-      const m=html.match(/DSEX[\s\S]{0,200}?(\d{4,5}[,.]?\d{0,2})/i);
-      if(m){
-        const val=parseFloat(m[1].replace(/,/g,''));
-        if(val>2000&&val<20000){
-          const date=new Date().toISOString().split('T')[0];
-          state.dsexSnapshots=state.dsexSnapshots||[];
-          state.dsexSnapshots=state.dsexSnapshots.filter(s=>s.date!==date);
-          state.dsexSnapshots.push({date,value:val});
-          if(state.dsexSnapshots.length>730) state.dsexSnapshots=state.dsexSnapshots.slice(-730);
-          save();
-          return val;
-        }
-      }
-    }catch(e){}
+function parseDSEX(html){
+  // DSE renders the name as DSE<font>X</font> Index, so "DSEX" never appears literally next to the value
+  let m=html.match(/DSE<[^>]*>X<\/font>\s*Index<\/div>\s*<div[^>]*>\s*([\d,]+(?:\.\d+)?)/i);
+  if(!m) m=html.match(/DSEX\s*Index[\s\S]{0,120}?([\d,]{4,}(?:\.\d+)?)/i);
+  if(!m){
+    // Fallback: intraday series JS variable — last "date time,value" pair
+    const v=html.match(/index_value_dsbi\s*=\s*[\s\S]{0,20000}?,(\d{4,5}\.\d+)\\n"\s*$/m)
+          ||[...html.matchAll(/index_value_dsbi[\s\S]{0,30000}?,(\d{4,5}\.\d+)/g)].pop();
+    if(v) m=v;
   }
+  if(!m) return null;
+  const val=parseFloat(String(m[1]).replace(/,/g,''));
+  return (val>2000&&val<20000)?val:null;
+}
+async function fetchAndSaveDSEX(){
+  try{
+    const html=await fetchViaProxy('https://www.dsebd.org/',12000);
+    const val=parseDSEX(html);
+    if(val){
+      const date=new Date().toISOString().split('T')[0];
+      state.dsexSnapshots=(state.dsexSnapshots||[]).filter(s=>s.date!==date);
+      state.dsexSnapshots.push({date,value:val});
+      if(state.dsexSnapshots.length>730) state.dsexSnapshots=state.dsexSnapshots.slice(-730);
+      save();
+      if(currentTab==='dashboard') renderDashboard();
+      return val;
+    }
+  }catch(e){ console.warn('DSEX fetch failed:',e); }
   return null;
 }
 
@@ -2369,8 +2370,11 @@ function renderDashboard(){
     const pStr=portRet!==null?`<span style="color:${portRet>=0?'var(--green)':'var(--red)'};font-weight:700">${portRet>=0?'+':''}${portRet.toFixed(1)}%</span>`:' — ';
     const dStr=dsexRet!==null?`<span style="color:${dsexRet>=0?'var(--green)':'var(--red)'};font-weight:700">${dsexRet>=0?'+':''}${dsexRet.toFixed(1)}%</span>`:' — ';
     dsexCardHtml=`<div class="card"><div class="card-icon">📊</div><div class="card-label">vs DSEX Benchmark</div><div class="card-value" style="font-size:13px;line-height:1.6">Portfolio: ${pStr}<br>DSEX: ${dStr}</div><div class="card-sub">Since ${firstPort.date}</div></div>`;
+  } else if(dsexSnaps.length===1){
+    const d=dsexSnaps[0];
+    dsexCardHtml=`<div class="card"><div class="card-icon">📊</div><div class="card-label">vs DSEX Benchmark</div><div class="card-value" style="font-size:15px">DSEX: ${d.value.toLocaleString('en-US',{maximumFractionDigits:2})}</div><div class="card-sub">Tracking started ${d.date} — sync on another day to compare returns</div></div>`;
   } else {
-    dsexCardHtml=`<div class="card"><div class="card-icon">📊</div><div class="card-label">vs DSEX Benchmark</div><div class="card-value" style="font-size:13px;color:var(--muted)">Sync to compare</div><div class="card-sub">Needs 2+ syncs with DSEX data</div></div>`;
+    dsexCardHtml=`<div class="card"><div class="card-icon">📊</div><div class="card-label">vs DSEX Benchmark</div><div class="card-value" style="font-size:13px;color:var(--muted)">Sync to compare</div><div class="card-sub">Press "Sync Latest Price" to fetch DSEX, or enter it manually below the chart</div></div>`;
   }
 
   document.getElementById('summary-cards').innerHTML=
