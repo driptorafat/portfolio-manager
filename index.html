@@ -242,7 +242,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
 .report-cfg{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:18px;align-items:flex-end}
 .rpt-group{display:flex;flex-direction:column;gap:7px}
 .rpt-group label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600}
-.rpt-type-btns{display:flex;gap:8px}
+.rpt-type-btns{display:flex;gap:8px;flex-wrap:wrap}
 .rpt-type-btn{padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
 .rpt-type-btn:hover{border-color:var(--accent2);color:var(--accent2)}
 .rpt-type-btn.active{background:var(--accent);border-color:var(--accent);color:#fff}
@@ -616,6 +616,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <div class="theme-opt" onclick="importTransactionsCSV()">📂&nbsp; Import Transactions CSV</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
         <div class="theme-opt" onclick="openSplitModal()">🔀&nbsp; Log Stock Split</div>
+        <div class="theme-opt" onclick="openDSEXModal()">📈&nbsp; Add DSEX History</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
         <div class="theme-opt" onclick="hardRefresh()">🔄&nbsp; Clear Cache &amp; Reload</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
@@ -687,9 +688,15 @@ tbody td{padding:11px 14px;vertical-align:middle}
     </div>
 
     <!-- Contribution Analysis -->
-    <div class="chart-card" style="margin-bottom:18px">
-      <div class="chart-card-title">🏅 Top Contributors</div>
-      <div id="contribution-chart"></div>
+    <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+      <div class="chart-card">
+        <div class="chart-card-title">🏅 Top Contributors</div>
+        <div id="contribution-chart"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">💼 Sector P&amp;L</div>
+        <div id="sector-pnl-chart"></div>
+      </div>
     </div>
 
     <!-- Row: Sector Chart + Holdings -->
@@ -861,6 +868,8 @@ tbody td{padding:11px 14px;vertical-align:middle}
           <button class="rpt-type-btn active" id="rpt-btn-statement" onclick="setReportType('statement')">📋 Portfolio Statement</button>
           <button class="rpt-type-btn" id="rpt-btn-pnl" onclick="setReportType('pnl')">📊 Profit &amp; Loss</button>
           <button class="rpt-type-btn" id="rpt-btn-annual" onclick="setReportType('annual')">📅 Annual Summary</button>
+          <button class="rpt-type-btn" id="rpt-btn-tax" onclick="setReportType('tax')">🧾 Tax Report</button>
+          <button class="rpt-type-btn" id="rpt-btn-journal" onclick="setReportType('journal')">📓 Trade Journal</button>
           <button class="rpt-type-btn" id="rpt-btn-risk" onclick="setReportType('risk')">📉 Risk Analytics</button>
           <button class="rpt-type-btn" id="rpt-btn-rebalance" onclick="setReportType('rebalance')">⚖️ Rebalancing</button>
         </div>
@@ -992,6 +1001,11 @@ tbody td{padding:11px 14px;vertical-align:middle}
       <label>Notes (optional)</label>
       <input id="f-notes" placeholder="e.g. Q3 earnings play"/>
     </div>
+    <div class="form-group">
+      <label>📓 Trade Journal — why this trade? exit plan?</label>
+      <textarea id="f-journal" rows="2" placeholder="e.g. Breakout above 52-week high on volume. Exit if it closes below ৳50."
+        style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-size:13px;font-family:inherit;resize:vertical;outline:none"></textarea>
+    </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeModal()">Cancel</button>
       <button class="btn-primary" id="submit-btn" onclick="submitTrade()">Add Buy</button>
@@ -1038,6 +1052,11 @@ tbody td{padding:11px 14px;vertical-align:middle}
 <div class="modal-overlay" id="calc-modal">
   <div class="modal" style="max-width:460px">
     <div class="modal-title">⚡ Trade / Position Calculator</div>
+    <div class="purpose-toggle" style="margin-bottom:14px">
+      <button class="purpose-btn active" id="calctab-size" onclick="setCalcTab('size')">📐 Position Size</button>
+      <button class="purpose-btn" id="calctab-avg" onclick="setCalcTab('avg')">📉 Average Down</button>
+    </div>
+    <div id="calc-pane-size">
     <div class="form-row">
       <div class="form-group">
         <label>Account Balance (৳) *</label>
@@ -1063,6 +1082,34 @@ tbody td{padding:11px 14px;vertical-align:middle}
       <input id="calc-target" type="number" step="any" placeholder="Profit target" oninput="calcPosition()"/>
     </div>
     <div class="calc-result-box" id="calc-result-box"></div>
+    </div>
+    <div id="calc-pane-avg" style="display:none">
+    <div class="form-group">
+      <label>Symbol — autofills from your holdings</label>
+      <input id="ad-symbol" placeholder="e.g. BRACBANK" oninput="this.value=this.value.toUpperCase();adAutoFill()"/>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Current Qty *</label>
+        <input id="ad-qty" type="number" min="0" step="any" placeholder="0" oninput="calcAvgDown()"/>
+      </div>
+      <div class="form-group">
+        <label>Current Avg Buy (৳) *</label>
+        <input id="ad-avg" type="number" min="0" step="any" placeholder="0.00" oninput="calcAvgDown()"/>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Additional Qty *</label>
+        <input id="ad-newqty" type="number" min="0" step="any" placeholder="0" oninput="calcAvgDown()"/>
+      </div>
+      <div class="form-group">
+        <label>Buy at Price (৳) *</label>
+        <input id="ad-newprice" type="number" min="0" step="any" placeholder="0.00" oninput="calcAvgDown()"/>
+      </div>
+    </div>
+    <div class="calc-result-box" id="ad-result-box"></div>
+    </div>
     <div class="modal-actions" style="margin-top:16px">
       <button class="btn-cancel" onclick="closeCalcModal()">Close</button>
       <button class="btn-primary" id="calc-buy-btn" style="display:none" onclick="calcAddToPortfolio()">Add to Portfolio</button>
@@ -1259,6 +1306,26 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <div style="display:flex;gap:10px;margin-top:8px">
       <button class="btn-primary" onclick="submitPortfolioModal()">Save</button>
       <button style="padding:10px 18px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);border-radius:8px;font-size:14px;cursor:pointer" onclick="document.getElementById('portfolio-modal').classList.remove('open')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- DSEX HISTORY MODAL -->
+<div class="modal-overlay" id="dsex-modal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title">📈 Add DSEX History</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px">
+      Backfill past DSEX index values so the benchmark comparison works immediately.<br>
+      One entry per line: <b>YYYY-MM-DD value</b> (space, comma, or tab separated).<br>
+      Find historical values at dsebd.org or investing.com. Existing dates are overwritten.
+    </div>
+    <textarea id="dsex-history-input" rows="8" oninput="previewDSEXHistory()"
+      style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;font-family:monospace;resize:vertical;outline:none"
+      placeholder="2026-01-15 5320.45&#10;2026-02-15, 5410.10&#10;2026-03-15&#9;5380.00"></textarea>
+    <div id="dsex-history-preview" style="font-size:12px;color:var(--muted);margin:8px 0;min-height:18px"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="document.getElementById('dsex-modal').classList.remove('open')">Cancel</button>
+      <button class="btn-primary" onclick="submitDSEXHistory()">Save History</button>
     </div>
   </div>
 </div>
@@ -1534,6 +1601,40 @@ function saveDSEXManual(){
   state.dsexSnapshots.push({date,value:v});
   save(); renderDashboard();
   toast('DSEX value saved','success');
+}
+
+function parseDSEXHistoryLines(text){
+  const out=[];
+  text.split(/\r?\n/).forEach(line=>{
+    const m=line.match(/(\d{4}-\d{2}-\d{2})[,\s\t]+([\d,]+\.?\d*)/);
+    if(!m)return;
+    const value=parseFloat(m[2].replace(/,/g,''));
+    if(value>2000&&value<20000) out.push({date:m[1],value});
+  });
+  return out;
+}
+function openDSEXModal(){
+  toggleDataMenu(true);
+  document.getElementById('dsex-history-input').value='';
+  document.getElementById('dsex-history-preview').textContent=
+    (state.dsexSnapshots||[]).length+' DSEX value(s) currently stored';
+  document.getElementById('dsex-modal').classList.add('open');
+}
+function previewDSEXHistory(){
+  const rows=parseDSEXHistoryLines(document.getElementById('dsex-history-input').value);
+  document.getElementById('dsex-history-preview').textContent=
+    rows.length?`✓ ${rows.length} valid entr${rows.length===1?'y':'ies'} found (${rows[0].date} … ${rows[rows.length-1].date})`:'No valid entries yet — format: YYYY-MM-DD value';
+}
+function submitDSEXHistory(){
+  const rows=parseDSEXHistoryLines(document.getElementById('dsex-history-input').value);
+  if(!rows.length) return toast('No valid entries — use format: YYYY-MM-DD value','error');
+  const byDate=Object.fromEntries((state.dsexSnapshots||[]).map(s=>[s.date,s.value]));
+  rows.forEach(r=>{byDate[r.date]=r.value;});
+  state.dsexSnapshots=Object.entries(byDate).map(([date,value])=>({date,value})).sort((a,b)=>a.date.localeCompare(b.date)).slice(-730);
+  save();
+  document.getElementById('dsex-modal').classList.remove('open');
+  if(currentTab==='dashboard') renderDashboard();
+  toast(`✅ ${rows.length} DSEX value(s) saved`,'success');
 }
 
 // Reconstruct cost history from transactions — returns [{date, totalCost}]
@@ -1988,7 +2089,7 @@ const FALLBACK_COLORS=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#8b5cf
 function getSectorColor(s,i){ return SECTOR_COLORS[s]||FALLBACK_COLORS[i%FALLBACK_COLORS.length]; }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{} };
+let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{}, prevPrices:{} };
 // Cloud sync globals
 let _fbAuth=null,_fbDb=null,_fbUser=null,_saveTimer=null,_cloudLoading=false;
 let formType='buy', formPurpose='investing', editingId=null;
@@ -2038,6 +2139,7 @@ function openModal(prefill) {
   document.getElementById('f-qty').value=prefill?.qty||'';
   document.getElementById('f-price').value=prefill?.price||'';
   document.getElementById('f-notes').value=prefill?.notes||'';
+  document.getElementById('f-journal').value=prefill?.journal||'';
   document.getElementById('f-date').value=prefill?.date||new Date().toISOString().split('T')[0];
   calcTotal();
   document.getElementById('modal-title').textContent=editingId?'Edit Transaction':'Add Transaction';
@@ -2088,6 +2190,7 @@ function submitTrade(){
   const price=parseFloat(document.getElementById('f-price').value);
   const date=document.getElementById('f-date').value;
   const notes=document.getElementById('f-notes').value.trim();
+  const journal=document.getElementById('f-journal').value.trim();
   if(!symbol) return toast('Enter a symbol','error');
   if(!qty||qty<=0) return toast('Enter valid quantity','error');
   if(!price||price<=0) return toast('Enter valid price','error');
@@ -2098,10 +2201,10 @@ function submitTrade(){
   }
   if(editingId){
     const idx=state.transactions.findIndex(t=>t.id===editingId);
-    if(idx!==-1) state.transactions[idx]={...state.transactions[idx],type:formType,symbol,name:name||symbol,quantity:qty,price,date,purpose:formPurpose,notes};
+    if(idx!==-1) state.transactions[idx]={...state.transactions[idx],type:formType,symbol,name:name||symbol,quantity:qty,price,date,purpose:formPurpose,notes,journal};
     toast('Transaction updated','success');
   } else {
-    state.transactions.push({id:Date.now()+Math.random(),type:formType,symbol,name:name||symbol,quantity:qty,price,date,purpose:formPurpose,notes});
+    state.transactions.push({id:Date.now()+Math.random(),type:formType,symbol,name:name||symbol,quantity:qty,price,date,purpose:formPurpose,notes,journal});
     toast(formType==='buy'?`Bought ${qty} ${symbol}`:`Sold ${qty} ${symbol}`,'success');
     if(formType==='buy'&&!state.sectorMap[symbol])
       fetchOneSector(symbol).then(s=>{if(s){state.sectorMap[symbol]=s;save();render();}});
@@ -2110,7 +2213,7 @@ function submitTrade(){
 }
 function editTx(id){
   const tx=state.transactions.find(t=>t.id===id); if(!tx)return;
-  openModal({editId:id,type:tx.type,purpose:tx.purpose,symbol:tx.symbol,name:tx.name!==tx.symbol?tx.name:'',qty:tx.quantity,price:tx.price,date:tx.date,notes:tx.notes||''});
+  openModal({editId:id,type:tx.type,purpose:tx.purpose,symbol:tx.symbol,name:tx.name!==tx.symbol?tx.name:'',qty:tx.quantity,price:tx.price,date:tx.date,notes:tx.notes||'',journal:tx.journal||''});
 }
 function deleteTx(id){
   if(!confirm('Delete this transaction?'))return;
@@ -2190,9 +2293,16 @@ function parsePrices(html){
   });
   const allSyms=[...new Set([...getSymbols(),...(state.watchlist||[]).map(w=>w.symbol)])];
   const matched=[],notFound=[];
+  const today=new Date().toISOString().split('T')[0];
+  state.prevPrices=state.prevPrices||{};
   allSyms.forEach(s=>{
     const price=map[s]||map[s.toUpperCase()];
-    if(price>0){state.currentPrices[s]=price;matched.push({sym:s,price});}
+    if(price>0){
+      // First sync of the day: snapshot the prior price as today's day-change baseline
+      const old=state.currentPrices[s];
+      if(old>0&&(state.prevPrices[s]?.date)!==today) state.prevPrices[s]={price:old,date:today};
+      state.currentPrices[s]=price;matched.push({sym:s,price});
+    }
     else notFound.push(s);
   });
   return{updated:matched.length,matched,notFound};
@@ -2229,7 +2339,7 @@ function calcPnL(sym, purpose){
     .filter(t=>t.type==='sell'&&t.symbol===sym)
     .sort((a,b)=>new Date(a.date)-new Date(b.date));
 
-  const lots=buys.map(b=>({price:b.price,remaining:b.quantity}));
+  const lots=buys.map(b=>({price:b.price,remaining:b.quantity,date:b.date}));
   let realized=0,soldQty=0;
   for(const sell of sells){
     let rem=sell.quantity;
@@ -2251,7 +2361,76 @@ function calcPnL(sym, purpose){
   const totSellQty=sells.reduce((s,b)=>s+b.quantity,0);
   const totSellVal=sells.reduce((s,b)=>s+b.quantity*b.price,0);
   const avgSell=totSellQty>0?totSellVal/totSellQty:0;
-  return{realized,heldQty,heldCost,avgBuy,soldQty,avgBuyAll,avgSell,totBuyQty,totBuyCost};
+  const openLots=held.map(l=>({date:l.date,qty:l.remaining,price:l.price}));
+  return{realized,heldQty,heldCost,avgBuy,soldQty,avgBuyAll,avgSell,totBuyQty,totBuyCost,lots:openLots};
+}
+
+// ─── DAY CHANGE (vs previous sync baseline) ──────────────────────────────────
+function getDayChange(sym){
+  const cp=state.currentPrices[sym], pp=(state.prevPrices||{})[sym];
+  const today=new Date().toISOString().split('T')[0];
+  if(!cp||!pp||!pp.price||pp.date!==today) return null;
+  return {abs:cp-pp.price, pct:(cp-pp.price)/pp.price*100};
+}
+
+// ─── XIRR (money-weighted annualized return, bisection) ──────────────────────
+function calcXIRR(){
+  const flows=[];
+  state.transactions.forEach(t=>{
+    const amt=t.quantity*t.price;
+    flows.push({date:new Date(t.date), amount:t.type==='buy'?-amt:amt});
+  });
+  (state.dividends||[]).forEach(d=>{
+    const cash=d.cashAmount!=null?d.cashAmount:(d.type==='cash'?d.amount||0:0);
+    if(cash>0) flows.push({date:new Date(d.date), amount:cash});
+  });
+  // Terminal flow: current value of everything still held (incl. bonus shares)
+  let totVal=0;
+  getSymbols().forEach(sym=>{
+    const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
+    const heldQty=inv.heldQty+trd.heldQty; if(heldQty<=0)return;
+    const ds=getDivStats(sym); const cp=state.currentPrices[sym]||0;
+    totVal+=cp?(heldQty+ds.totalBonusShares)*cp:inv.heldCost+trd.heldCost;
+  });
+  if(totVal>0) flows.push({date:new Date(), amount:totVal});
+  if(flows.length<2) return null;
+  flows.sort((a,b)=>a.date-b.date);
+  const t0=flows[0].date;
+  const yrs=flows.map(f=>(f.date-t0)/31557600000);
+  if(yrs[yrs.length-1]<0.08) return null; // need ~1 month of history for a meaningful annualized figure
+  if(!flows.some(f=>f.amount<0)||!flows.some(f=>f.amount>0)) return null;
+  const npv=r=>flows.reduce((s,f,i)=>s+f.amount/Math.pow(1+r,yrs[i]),0);
+  let lo=-0.9999, hi=10, flo=npv(lo), fhi=npv(hi);
+  if(flo*fhi>0) return null;
+  for(let i=0;i<100;i++){
+    const mid=(lo+hi)/2, fm=npv(mid);
+    if(Math.abs(fm)<1e-7) return mid*100;
+    if(flo*fm<0){hi=mid;fhi=fm;} else {lo=mid;flo=fm;}
+  }
+  return (lo+hi)/2*100;
+}
+
+// ─── LOT-LEVEL VIEW ──────────────────────────────────────────────────────────
+function toggleLots(sym,purpose,btn){
+  const tr=btn.closest('tr');
+  const next=tr.nextElementSibling;
+  if(next&&next.classList.contains('lot-row')){ next.remove(); btn.textContent='▸ lots'; return; }
+  const d=calcPnL(sym,purpose);
+  const cp=state.currentPrices[sym]||0;
+  const rows=(d.lots||[]).map(l=>{
+    const cost=l.qty*l.price;
+    const gain=cp?l.qty*cp-cost:null;
+    const days=Math.floor((Date.now()-new Date(l.date))/86400000);
+    return `<tr><td>${fmtDate(l.date)} <span style="color:var(--muted);font-size:10px">(${days}d)</span></td><td>${l.qty}</td><td>${fmt(l.price)}</td><td>${fmt(cost)}</td><td class="pnl ${gain!==null?pc(gain):'zero'}">${gain!==null?fmtPnl(gain):'—'}</td><td class="pnl ${gain!==null&&cost>0?pc(gain):'zero'}">${gain!==null&&cost>0?(gain/cost*100).toFixed(2)+'%':'—'}</td></tr>`;
+  }).join('');
+  const lotTr=document.createElement('tr');
+  lotTr.className='lot-row';
+  lotTr.innerHTML=`<td colspan="${tr.children.length}" style="background:var(--surface2);padding:10px 16px">
+    <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Open Lots (FIFO) — ${sym}</div>
+    <table style="width:100%;font-size:12px"><thead><tr><th>Buy Date</th><th>Qty Left</th><th>Buy Price</th><th>Cost</th><th>Gain</th><th>Gain %</th></tr></thead><tbody>${rows||'<tr><td colspan="6" style="color:var(--muted)">No open lots</td></tr>'}</tbody></table>
+  </td>`;
+  tr.after(lotTr);
+  btn.textContent='▾ lots';
 }
 
 // ─── MARKET STATUS ────────────────────────────────────────────────────────────
@@ -2327,6 +2506,7 @@ function render(){
 function renderDashboard(){
   const syms=getSymbols();
   let totInv=0,totReal=0,totUnreal=0,totPortVal=0,invHeld=0,trdHeld=0;
+  let dayGain=0,dayBase=0,dayHas=false;
   syms.forEach(sym=>{
     const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
     totInv+=inv.heldCost+trd.heldCost;
@@ -2336,8 +2516,18 @@ function renderDashboard(){
     else{totPortVal+=inv.heldCost+trd.heldCost;}
     if(inv.heldQty>0)invHeld++;
     if(trd.heldQty>0)trdHeld++;
+    const heldQ=inv.heldQty+trd.heldQty;
+    if(heldQ>0&&cp){
+      const dc=getDayChange(sym);
+      if(dc){
+        const allQ=heldQ+getDivStats(sym).totalBonusShares;
+        dayGain+=dc.abs*allQ; dayBase+=(cp-dc.abs)*allQ; dayHas=true;
+      }
+    }
   });
   const totalPnL=totReal+totUnreal;
+  const dayPct=dayHas&&dayBase>0?dayGain/dayBase*100:null;
+  const xirr=calcXIRR();
 
   // Dividend totals (all symbols, backward-compat)
   const divs=state.dividends||[];
@@ -2391,6 +2581,14 @@ function renderDashboard(){
       grandTotal>=0?'green':'red',
       'P&L + Dividends + Bonus value'+(totBonusValue>0?' · Bonus: '+fmt(totBonusValue):''),
       '🏆')+
+    card("Day's Gain",
+      dayHas?fmtPnl(dayGain)+(dayPct!==null?' <span style="font-size:14px;opacity:.8">('+(dayPct>=0?'+':'')+dayPct.toFixed(2)+'%)</span>':''):'—',
+      dayHas?(dayGain>=0?'green':'red'):'',
+      dayHas?'Today vs previous sync':'Sync on two different days to track','☀️')+
+    card('XIRR',
+      xirr!==null?(xirr>=0?'+':'')+xirr.toFixed(2)+'%<span style="font-size:13px;opacity:.8">/yr</span>':'—',
+      xirr!==null?(xirr>=0?'green':'red'):'',
+      xirr!==null?'Money-weighted annual return':'Needs 1+ month of history','⚡')+
     dsexCardHtml;
 
   // Market status
@@ -2626,6 +2824,7 @@ function renderDashboard(){
 
   // ── Contribution Analysis ──
   renderContribution();
+  renderSectorPnL();
 }
 
 function renderDonut(data){
@@ -2699,6 +2898,48 @@ function renderContribution(){
   el.innerHTML=`<svg viewBox="0 0 800 ${H}" style="width:100%;height:${H}px">${rows}</svg>`;
 }
 
+function renderSectorPnL(){
+  const el=document.getElementById('sector-pnl-chart');
+  if(!el)return;
+  const map={};
+  let totCost=0;
+  getSymbols().forEach(sym=>{
+    const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
+    const ds=getDivStats(sym);
+    const cp=state.currentPrices[sym]||0;
+    const heldQty=inv.heldQty+trd.heldQty;
+    const heldCost=inv.heldCost+trd.heldCost;
+    const realized=inv.realized+trd.realized;
+    const unrealized=cp&&heldQty>0?(heldQty+ds.totalBonusShares)*cp-heldCost:0;
+    const total=realized+unrealized+ds.totalCashAmount;
+    if(heldCost<=0&&realized===0&&ds.totalCashAmount===0)return;
+    const sec=state.sectorMap[sym]||'Unknown';
+    map[sec]=map[sec]||{v:0,cost:0};
+    map[sec].v+=total; map[sec].cost+=heldCost;
+    totCost+=heldCost;
+  });
+  const items=Object.entries(map).map(([sec,o])=>({sec,v:o.v,cost:o.cost})).sort((a,b)=>b.v-a.v);
+  if(!items.length){el.innerHTML='<div style="text-align:center;color:var(--muted);padding:30px;font-size:13px">Add holdings with sectors to see sector P&L</div>';return;}
+  const display=items.slice(0,8);
+  const maxAbs=Math.max(...display.map(i=>Math.abs(i.v)),1);
+  const rowH=28,pad=8,labelW=130,valW=90,barAreaW=800-labelW-valW-pad*3;
+  const H=display.length*rowH+pad*2;
+  const rows=display.map((item,i)=>{
+    const y=pad+i*rowH;
+    const barW=Math.max(2,(Math.abs(item.v)/maxAbs)*barAreaW*0.92);
+    const x0=labelW+pad;
+    const color=item.v>=0?'#22c55e':'#ef4444';
+    const retPct=item.cost>0?item.v/item.cost*100:null;
+    const valStr=(item.v>=0?'+':'')+((item.v/1000).toFixed(1))+'K';
+    const lbl=item.sec.length>18?item.sec.slice(0,17)+'…':item.sec;
+    return`<text x="${labelW-4}" y="${y+rowH*0.65}" text-anchor="end" fill="var(--text)" font-size="11" font-family="system-ui" font-weight="600">${lbl}</text>
+           <rect x="${x0}" y="${y+4}" width="${barW.toFixed(1)}" height="${rowH-10}" fill="${color}" opacity="0.85" rx="3"/>
+           <text x="${x0+barW+6}" y="${y+rowH*0.65}" fill="${color}" font-size="11" font-family="system-ui" font-weight="600">${valStr}</text>
+           <text x="${800-pad}" y="${y+rowH*0.65}" text-anchor="end" fill="#64748b" font-size="10" font-family="system-ui">${retPct!==null?(retPct>=0?'+':'')+retPct.toFixed(1)+'%':''}</text>`;
+  }).join('');
+  el.innerHTML=`<svg viewBox="0 0 800 ${H}" style="width:100%;height:${H}px">${rows}</svg>`;
+}
+
 function renderTrading(){
   const search=(document.getElementById('trade-search')?.value||'').toUpperCase();
   const syms=getSymbols();
@@ -2730,10 +2971,13 @@ function renderTrading(){
     const avgT = d.avgBuyAll || 0;
     const slT=(state.stopLoss||{})[sym]!=null?(state.stopLoss||{})[sym]:avgT?+(avgT*0.92).toFixed(2):0;
     const slStatT=open&&cp&&slT&&avgT?(cp<=slT?'hit':cp<=avgT*0.94?'warn':'safe'):'';
+    const dcT=open?getDayChange(sym):null;
+    const dayTagT=dcT?`<div style="font-size:10px;font-weight:700;margin-top:2px;color:var(--${dcT.abs>=0?'green':'red'})">${dcT.abs>=0?'▲':'▼'} ${(dcT.pct>=0?'+':'')}${dcT.pct.toFixed(2)}% today</div>`:'';
+    const lotsBtnT=open?`<button onclick="toggleLots('${sym}','trading',this)" style="background:none;border:none;cursor:pointer;color:var(--accent2);font-size:10px;padding:0;margin-top:2px">▸ lots</button>`:'';
     return`<tr>
       <td><div class="sym">${sym}</div><div class="name-sub">${getSymbolName(sym)}</div>
         <input class="note-input" value="${(state.stockNotes||{})[sym]||''}" placeholder="📝 Add note…"
-          onblur="updateStockNote('${sym}',this.value)" style="width:100%;font-size:10px;color:var(--muted);background:transparent;border:none;border-bottom:1px dashed var(--border);outline:none;margin-top:3px;padding:1px 0"/></td>
+          onblur="updateStockNote('${sym}',this.value)" style="width:100%;font-size:10px;color:var(--muted);background:transparent;border:none;border-bottom:1px dashed var(--border);outline:none;margin-top:3px;padding:1px 0"/>${lotsBtnT}</td>
       <td><div class="sector-cell"><span class="sector-dot" style="background:${sc};display:${sec?'inline-block':'none'}"></span>
         <input class="sector-input" value="${sec}" placeholder="Enter sector…" onchange="updateSector('${sym}',this.value)" onblur="updateSector('${sym}',this.value)"/></div></td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${open?getHoldingPeriod(sym,'trading')||'—':'—'}</td>
@@ -2748,7 +2992,7 @@ function renderTrading(){
       <td>${fmt(d.heldCost)}</td>
       <td><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
         <input class="price-input" value="${cp||''}" placeholder="Enter" onchange="updatePrice('${sym}',this.value)" onblur="updatePrice('${sym}',this.value)"/>
-        ${priceAuto}</div></td>
+        ${priceAuto}</div>${dayTagT}</td>
       <td>${curVal!==null?fmt(curVal):'—'}</td>
       <td class="pnl ${upnl!==null?pc(upnl):'zero'}">${upnl!==null?fmtPnl(upnl):'—'}</td>
       <td class="pnl ${retPct!==null?pc(retPct):'zero'}">${retPct!==null?retPct.toFixed(2)+'%':'—'}</td>
@@ -2791,10 +3035,13 @@ function renderInvesting(){
     const avgI = d.avgBuy > 0 ? d.avgBuy : 0;
     const slI  = (state.stopLoss||{})[sym]!=null ? (state.stopLoss||{})[sym] : avgI ? +(avgI*0.92).toFixed(2) : 0;
     const slStatI = cp && slI && avgI ? (cp<=slI?'hit':cp<=avgI*0.94?'warn':'safe') : '';
+    const dcI=getDayChange(sym);
+    const dayTagI=dcI?`<div style="font-size:10px;font-weight:700;margin-top:2px;color:var(--${dcI.abs>=0?'green':'red'})">${dcI.abs>=0?'▲':'▼'} ${(dcI.pct>=0?'+':'')}${dcI.pct.toFixed(2)}% today</div>`:'';
     return`<tr>
       <td><div class="sym">${sym}</div><div class="name-sub">${getSymbolName(sym)}</div>
         <input class="note-input" value="${(state.stockNotes||{})[sym]||''}" placeholder="📝 Add note…"
-          onblur="updateStockNote('${sym}',this.value)" style="width:100%;font-size:10px;color:var(--muted);background:transparent;border:none;border-bottom:1px dashed var(--border);outline:none;margin-top:3px;padding:1px 0"/></td>
+          onblur="updateStockNote('${sym}',this.value)" style="width:100%;font-size:10px;color:var(--muted);background:transparent;border:none;border-bottom:1px dashed var(--border);outline:none;margin-top:3px;padding:1px 0"/>
+        <button onclick="toggleLots('${sym}','investing',this)" style="background:none;border:none;cursor:pointer;color:var(--accent2);font-size:10px;padding:0;margin-top:2px">▸ lots</button></td>
       <td style="font-size:11px;color:var(--muted);white-space:nowrap">${getHoldingPeriod(sym,'investing')||'—'}</td>
       <td>
         <strong>${adjQty}</strong>
@@ -2813,7 +3060,7 @@ function renderInvesting(){
         <input class="sector-input" value="${sec}" placeholder="Enter sector…" onchange="updateSector('${sym}',this.value)" onblur="updateSector('${sym}',this.value)"/></div></td>
       <td><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
         <input class="price-input" value="${cp||''}" placeholder="Enter" onchange="updatePrice('${sym}',this.value)" onblur="updatePrice('${sym}',this.value)"/>
-        ${priceAuto}${divMark}</div></td>
+        ${priceAuto}${divMark}</div>${dayTagI}</td>
       <td>${adjVal!==null?fmt(adjVal):'—'}</td>
       <td class="pnl ${adjUpnl!==null?pc(adjUpnl):'zero'}">${adjUpnl!==null?fmtPnl(adjUpnl):'—'}</td>
       <td class="pnl ${adjRet!==null?pc(adjRet):'zero'}">${adjRet!==null?adjRet.toFixed(2)+'%':'—'}</td>
@@ -3124,6 +3371,62 @@ function renderWatchlist(){
 // ─── TRADE CALCULATOR ─────────────────────────────────────────────────────────
 function openCalcModal(){ document.getElementById('calc-modal').classList.add('open'); }
 function closeCalcModal(){ document.getElementById('calc-modal').classList.remove('open'); }
+function setCalcTab(tab){
+  document.getElementById('calctab-size').classList.toggle('active',tab==='size');
+  document.getElementById('calctab-avg').classList.toggle('active',tab==='avg');
+  document.getElementById('calc-pane-size').style.display=tab==='size'?'':'none';
+  document.getElementById('calc-pane-avg').style.display=tab==='avg'?'':'none';
+  if(tab==='avg') document.getElementById('calc-buy-btn').style.display='none';
+}
+function adAutoFill(){
+  const sym=document.getElementById('ad-symbol').value.trim().toUpperCase();
+  if(!sym)return;
+  const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
+  const qty=inv.heldQty+trd.heldQty;
+  if(qty>0){
+    document.getElementById('ad-qty').value=qty;
+    document.getElementById('ad-avg').value=((inv.heldCost+trd.heldCost)/qty).toFixed(2);
+    const cp=state.currentPrices[sym];
+    if(cp&&!document.getElementById('ad-newprice').value) document.getElementById('ad-newprice').value=cp;
+    calcAvgDown();
+  }
+}
+function calcAvgDown(){
+  const q=parseFloat(document.getElementById('ad-qty').value)||0;
+  const a=parseFloat(document.getElementById('ad-avg').value)||0;
+  const nq=parseFloat(document.getElementById('ad-newqty').value)||0;
+  const np=parseFloat(document.getElementById('ad-newprice').value)||0;
+  const box=document.getElementById('ad-result-box');
+  if(q<=0||a<=0||nq<=0||np<=0){ box.style.display='none'; return; }
+  const newAvg=(q*a+nq*np)/(q+nq);
+  const extraCost=nq*np;
+  const avgDropPct=(a-newAvg)/a*100;
+  const sym=document.getElementById('ad-symbol').value.trim().toUpperCase();
+  const cp=sym?state.currentPrices[sym]:0;
+  const breakevenMove=cp?((newAvg-cp)/cp*100):null;
+  box.style.display='grid';
+  box.innerHTML=`
+    <div class="calc-result-item">
+      <div class="calc-result-lbl">New Avg Buy</div>
+      <div class="calc-result-val">${fmt(newAvg)}</div>
+    </div>
+    <div class="calc-result-item">
+      <div class="calc-result-lbl">Avg ${avgDropPct>=0?'Drops':'Rises'} By</div>
+      <div class="calc-result-val" style="color:var(--${avgDropPct>=0?'green':'red'})">${Math.abs(avgDropPct).toFixed(2)}%</div>
+    </div>
+    <div class="calc-result-item">
+      <div class="calc-result-lbl">Additional Cost</div>
+      <div class="calc-result-val">${fmt(extraCost)}</div>
+    </div>
+    <div class="calc-result-item">
+      <div class="calc-result-lbl">New Total (${q+nq} sh)</div>
+      <div class="calc-result-val">${fmt(q*a+extraCost)}</div>
+    </div>
+    ${breakevenMove!==null?`<div class="calc-result-item" style="grid-column:1/-1">
+      <div class="calc-result-lbl">To Break Even From Current ৳${cp}</div>
+      <div class="calc-result-val" style="font-size:14px;color:var(--${breakevenMove<=0?'green':'yellow'})">${breakevenMove<=0?'Already above new avg ✓':'Needs +'+breakevenMove.toFixed(2)+'% rise to ৳'+newAvg.toFixed(2)}</div>
+    </div>`:''}`;
+}
 function calcPosition(){
   const balance  = parseFloat(document.getElementById('calc-balance').value) || 0;
   const riskPct  = parseFloat(document.getElementById('calc-risk').value)    || 2;
@@ -3407,7 +3710,7 @@ function clearAllData() {
   const pid = getActivePortfolioId();
   const name = (getPortfolioList().find(p=>p.id===pid)||{}).name || 'this portfolio';
   if(!confirm(`Delete ALL data for "${name}" permanently?\n\nThis cannot be undone. Export a backup first if needed.`)) return;
-  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{}};
+  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{}};
   save(); render();
   document.getElementById('sync-status').textContent='';
   toast('All data cleared','success');
@@ -3506,12 +3809,96 @@ function setTargetAllocation(sector,val){
   save();
 }
 
+// ─── TAX REPORT (Bangladesh fiscal year: July–June) ──────────────────────────
+function fiscalYearOf(dateStr){
+  const d=new Date(dateStr); const y=d.getFullYear();
+  return d.getMonth()>=6 ? `${y}-${String((y+1)%100).padStart(2,'0')}` : `${y-1}-${String(y%100).padStart(2,'0')}`;
+}
+function buildTaxReport(){
+  const DIVIDEND_EXEMPT=50000; // NBR: dividend income above ৳50,000/yr is taxable for individuals
+  const fy={};
+  (state.dividends||[]).forEach(d=>{
+    const cash=d.cashAmount!=null?d.cashAmount:(d.type==='cash'?d.amount||0:0);
+    if(cash<=0)return;
+    const f=fiscalYearOf(d.date);
+    fy[f]=fy[f]||{cash:0,bySym:{}};
+    fy[f].cash+=cash;
+    fy[f].bySym[d.symbol]=(fy[f].bySym[d.symbol]||0)+cash;
+  });
+  // Realized gains per fiscal year (FIFO matched at sell date)
+  const gains={};
+  getSymbols().forEach(sym=>{
+    const buys=state.transactions.filter(t=>t.type==='buy'&&t.symbol===sym).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const sells=state.transactions.filter(t=>t.type==='sell'&&t.symbol===sym).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const lots=buys.map(b=>({price:b.price,remaining:b.quantity}));
+    for(const sell of sells){
+      let rem=sell.quantity,g=0;
+      for(const lot of lots){
+        if(lot.remaining<=0)continue;
+        const n=Math.min(lot.remaining,rem);
+        g+=n*(sell.price-lot.price); lot.remaining-=n; rem-=n;
+        if(rem<=0)break;
+      }
+      const f=fiscalYearOf(sell.date);
+      gains[f]=(gains[f]||0)+g;
+    }
+  });
+  const years=[...new Set([...Object.keys(fy),...Object.keys(gains)])].sort().reverse();
+  if(!years.length) return '<div style="text-align:center;padding:40px;color:var(--muted)">No dividends or closed trades yet — tax summary will appear here</div>';
+  const blocks=years.map(y=>{
+    const cash=fy[y]?.cash||0, gain=gains[y]||0;
+    const taxable=Math.max(0,cash-DIVIDEND_EXEMPT);
+    const symRows=fy[y]?Object.entries(fy[y].bySym).sort((a,b)=>b[1]-a[1]).map(([s,v])=>`<tr><td><b>${s}</b></td><td>${fmt(v)}</td></tr>`).join(''):'';
+    return `<div style="border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
+      <div style="font-weight:700;font-size:15px;margin-bottom:12px">FY ${y} <span style="font-size:11px;color:var(--muted);font-weight:400">(Jul ${y.split('-')[0]} – Jun ${parseInt(y.split('-')[0])+1})</span></div>
+      <div class="summary-grid" style="margin-bottom:12px">
+        ${card('Dividend Income',fmt(cash),cash>0?'green':'','Gross cash dividends received','💵')}
+        ${card('Taxable Dividend',taxable>0?fmt(taxable):'৳0.00',taxable>0?'red':'green',taxable>0?'Amount above ৳50,000 exemption':'Within ৳50,000 exemption','🧾')}
+        ${card('Realized Capital Gain',fmtPnl(gain),gain>=0?'green':'red','Listed-share gains — exempt for individuals','📊')}
+      </div>
+      ${symRows?`<div class="table-wrap"><table style="font-size:12px"><thead><tr><th>Symbol</th><th>Dividend Received</th></tr></thead><tbody>${symRows}</tbody></table></div>`:''}
+    </div>`;
+  }).join('');
+  return `<p style="font-size:11px;color:var(--muted);margin:14px 0">⚠️ Indicative only — based on common NBR rules for individual investors (cash dividend income above ৳50,000/year is taxable; capital gains on listed shares are exempt). Bonus shares are not taxed at receipt. Verify current-year rules with your tax advisor before filing.</p>${blocks}`;
+}
+
+// ─── TRADE JOURNAL REVIEW ─────────────────────────────────────────────────────
+function buildJournalReport(){
+  const closed=[];
+  getSymbols().forEach(sym=>{
+    ['investing','trading'].forEach(p=>{
+      const d=calcPnL(sym,p);
+      if(d.soldQty>0) closed.push({sym,p,realized:d.realized});
+    });
+  });
+  closed.sort((a,b)=>a.realized-b.realized); // worst first — review losers
+  if(!closed.length) return '<div style="text-align:center;padding:40px;color:var(--muted)">No closed positions yet — once you sell, your trades appear here for review.<br><br>Tip: fill the 📓 Trade Journal field when adding trades to record your reasoning.</div>';
+  const blocks=closed.map(c=>{
+    const txs=state.transactions.filter(t=>t.symbol===c.sym&&(t.purpose===c.p||t.type==='sell')).sort((a,b)=>new Date(a.date)-new Date(b.date));
+    const txRows=txs.map(t=>`<tr>
+      <td style="white-space:nowrap">${fmtDate(t.date)}</td>
+      <td style="color:var(--${t.type==='buy'?'green':'red'});font-weight:600">${t.type.toUpperCase()}</td>
+      <td>${t.quantity}</td><td>${fmt(t.price)}</td>
+      <td style="font-size:11px;color:${t.journal?'var(--text)':'var(--muted)'}">${t.journal||t.notes||'<i>no journal entry</i>'}</td>
+    </tr>`).join('');
+    const isLoss=c.realized<0;
+    return `<div style="border:1px solid ${isLoss?'rgba(239,68,68,.35)':'var(--border)'};border-radius:12px;padding:14px 16px;margin-bottom:14px${isLoss?';background:rgba(239,68,68,.04)':''}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-weight:700">${isLoss?'🔻':'✅'} ${c.sym} <span style="font-size:11px;color:var(--muted);font-weight:400">${c.p}</span></span>
+        <span class="pnl ${pc(c.realized)}" style="font-weight:700;font-size:15px">${fmtPnl(c.realized)}</span>
+      </div>
+      <div class="table-wrap"><table style="font-size:12px"><thead><tr><th>Date</th><th>Type</th><th>Qty</th><th>Price</th><th>Journal / Notes</th></tr></thead><tbody>${txRows}</tbody></table></div>
+    </div>`;
+  }).join('');
+  return `<p style="font-size:12px;color:var(--muted);margin:14px 0">Closed positions sorted worst-first — review your losing trades to spot patterns. Add a 📓 journal entry when placing trades to capture your reasoning.</p>${blocks}`;
+}
+
 // ─── REPORTS ─────────────────────────────────────────────────────────────────
 let reportType = 'statement';
 
 function setReportType(type) {
   reportType = type;
-  ['statement','pnl','annual','risk','rebalance'].forEach(t=>{
+  ['statement','pnl','annual','risk','rebalance','tax','journal'].forEach(t=>{
     const b=document.getElementById('rpt-btn-'+t);
     if(b) b.classList.toggle('active',t===type);
   });
@@ -3530,6 +3917,10 @@ function generateReport() {
     html = buildRiskReport();
   } else if (reportType === 'rebalance') {
     html = buildRebalanceReport();
+  } else if (reportType === 'tax') {
+    html = buildTaxReport();
+  } else if (reportType === 'journal') {
+    html = buildJournalReport();
   } else {
     const from = document.getElementById('rpt-from').value;
     const to   = document.getElementById('rpt-to').value;
@@ -3538,7 +3929,7 @@ function generateReport() {
     html = buildPnLReport(from, to);
   }
   document.getElementById('rpt-output').innerHTML = html;
-  document.getElementById('rpt-actions-bar').style.display = (reportType==='risk'||reportType==='rebalance')?'none':'';
+  document.getElementById('rpt-actions-bar').style.display = (reportType==='risk'||reportType==='rebalance'||reportType==='journal')?'none':'';
 }
 
 function buildStatementReport() {
@@ -4103,7 +4494,7 @@ function doSwitchPortfolio(pid) {
   if (pid === getActivePortfolioId()) return;
   save();
   localStorage.setItem('pm_active', pid);
-  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{}};
+  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{}};
   load();
   updatePortfolioSwitcher();
   render();
@@ -4169,6 +4560,7 @@ document.getElementById('calc-modal').addEventListener('click',e=>{if(e.target==
 document.getElementById('div-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeDivModal();});
 document.getElementById('alert-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAlertModal();});
 document.getElementById('split-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)document.getElementById('split-modal').classList.remove('open');});
+document.getElementById('dsex-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
 document.getElementById('csv-import-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
 document.getElementById('portfolio-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
 initPortfolios();
