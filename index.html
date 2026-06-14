@@ -2374,6 +2374,23 @@ function getDayChange(sym){
 }
 
 // ─── XIRR (money-weighted annualized return, bisection) ──────────────────────
+// Years elapsed since the first transaction (the portfolio's age)
+function portfolioYears(){
+  const dates=state.transactions.map(t=>new Date(t.date)).filter(d=>!isNaN(d));
+  if(!dates.length) return null;
+  const first=new Date(Math.min(...dates));
+  return (Date.now()-first)/31557600000; // 365.25-day years
+}
+// CAGR: annualizes the overall return over the portfolio's age.
+// Unlike XIRR it ignores contribution timing — a simpler companion figure.
+function calcCAGR(totalRetPct){
+  if(totalRetPct===null) return null;
+  const yrs=portfolioYears();
+  if(yrs===null||yrs<0.08) return null;       // need ~1 month of history
+  const growth=1+totalRetPct/100;
+  if(growth<=0) return -100;                    // wiped out
+  return (Math.pow(growth,1/yrs)-1)*100;
+}
 function calcXIRR(){
   const flows=[];
   state.transactions.forEach(t=>{
@@ -2547,6 +2564,8 @@ function renderDashboard(){
   // Grand total = P&L + cash dividends + current value of bonus shares
   const grandTotal=totalPnL+totCashDiv+totBonusValue;
   const grandRetPct=totInv>0?(grandTotal/totInv)*100:null;
+  const cagr=calcCAGR(grandRetPct);
+  const pYrs=portfolioYears()||0;
 
   // DSEX benchmark card
   const dsexSnaps=(state.dsexSnapshots||[]).sort((a,b)=>a.date.localeCompare(b.date));
@@ -2589,6 +2608,10 @@ function renderDashboard(){
       xirr!==null?(xirr>=0?'+':'')+xirr.toFixed(2)+'%<span style="font-size:13px;opacity:.8">/yr</span>':'—',
       xirr!==null?(xirr>=0?'green':'red'):'',
       xirr!==null?'Money-weighted annual return':'Needs 1+ month of history','⚡')+
+    card('CAGR',
+      cagr!==null?(cagr>=0?'+':'')+cagr.toFixed(2)+'%<span style="font-size:13px;opacity:.8">/yr</span>':'—',
+      cagr!==null?(cagr>=0?'green':'red'):'',
+      cagr!==null?`Annualized over ${pYrs.toFixed(1)} yr${pYrs>=2?'s':''}`:'Needs 1+ month of history','📐')+
     dsexCardHtml;
 
   // Market status
