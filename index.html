@@ -2577,8 +2577,10 @@ function getTopPerformers(){
 
     list.push({sym, upnl:totalGain, pct, cost, cp, adjQty, ds});
   });
-  list.sort((a,b)=>b.pct-a.pct);
-  return{best:list.slice(0,3), worst:list.slice(-3).reverse()};
+  // Gainers high→low, losers low→high — no overlap, only genuine losers
+  const gainers=list.filter(p=>p.pct>=0).sort((a,b)=>b.pct-a.pct);
+  const losers =list.filter(p=>p.pct<0 ).sort((a,b)=>a.pct-b.pct);
+  return{best:gainers.slice(0,3), worst:losers.slice(0,3), hasHoldings:list.length>0};
 }
 
 // ─── SECTOR PIE ──────────────────────────────────────────────────────────────
@@ -2745,7 +2747,7 @@ function renderDashboard(){
     </div>`;
 
   // Top performers
-  const{best,worst}=getTopPerformers();
+  const{best,worst,hasHoldings}=getTopPerformers();
   const perfRows=(arr,emoji)=>arr.map((p,i)=>{
     const hasCash  = p.ds.totalCashAmount>0;
     const hasBonus = p.ds.totalBonusShares>0;
@@ -2766,11 +2768,13 @@ function renderDashboard(){
       </div>
     </div>`;
   }).join('');
+  const lblStyle='font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px';
   document.getElementById('top-performers').innerHTML=
-    best.length
-      ? `<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Top Gainers</div>
-         <div class="performers-list">${perfRows(best,'🏆')}</div>
-         ${worst.length&&worst[0].pct<0?`<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 8px">Top Losers</div><div class="performers-list">${perfRows(worst,'📉')}</div>`:''}`
+    hasHoldings
+      ? `<div style="${lblStyle};margin-bottom:8px">Top Gainers</div>
+         ${best.length?`<div class="performers-list">${perfRows(best,'🏆')}</div>`:'<div style="color:var(--muted);font-size:12px;padding:6px 0">No positions in profit yet</div>'}
+         <div style="${lblStyle};margin:14px 0 8px">Top Losers</div>
+         ${worst.length?`<div class="performers-list">${perfRows(worst,'📉')}</div>`:'<div style="color:var(--green);font-size:12px;padding:6px 0">✓ No losing positions — all holdings in profit</div>'}`
       : '<div style="color:var(--muted);font-size:13px;padding:20px 0;text-align:center">Add holdings with market prices to see performers</div>';
 
   // Recent activity
