@@ -4752,6 +4752,23 @@ function sipXIRR(sip){
   return (lo+hi)/2*100;
 }
 
+// CAGR for a SIP: annualizes total return over the SIP's full age (first
+// installment → today), as if all capital were invested at the start. It
+// ignores when each installment landed, so for a drip-fed SIP it reads
+// lower than XIRR (which credits later installments their shorter time).
+function sipCAGR(sip){
+  const inst=sip.installments||[];
+  const st=sipStats(sip);
+  if(st.value===null||st.invested<=0||!inst.length) return null;
+  const dates=inst.map(i=>new Date(i.date)).filter(d=>!isNaN(d));
+  if(!dates.length) return null;
+  const yrs=(Date.now()-Math.min(...dates))/31557600000;
+  if(yrs<0.08) return null;                  // need ~1 month of history
+  const growth=st.value/st.invested;
+  if(growth<=0) return -100;
+  return (Math.pow(growth,1/yrs)-1)*100;
+}
+
 function renderSIP(){
   const sips=state.sips||[];
   // Aggregate summary
@@ -4774,6 +4791,7 @@ function renderSIP(){
   document.getElementById('sip-list').innerHTML=sips.map(sip=>{
     const s=sipStats(sip);
     const xirr=sipXIRR(sip);
+    const cagr=sipCAGR(sip);
     const navLine=sip.nav?`NAV ৳${sip.nav}${sip.navDate?' · '+sip.navDate:''}`:'No NAV yet — fetch or enter manually';
     const instRows=[...(sip.installments||[])].sort((a,b)=>b.date.localeCompare(a.date)).map(i=>`
       <tr>
@@ -4804,6 +4822,7 @@ function renderSIP(){
         ${card('Value',s.value!==null?fmt(s.value):'—',s.value!==null?(s.gain>=0?'green':'red'):'',sip.nav?'At NAV ৳'+sip.nav:'Fetch NAV','💎')}
         ${card('Gain',s.gain!==null?fmtPnl(s.gain)+(s.retPct!==null?' ('+(s.retPct>=0?'+':'')+s.retPct.toFixed(1)+'%)':''):'—',s.gain!==null?(s.gain>=0?'green':'red'):'','Unrealized','📈')}
         ${card('XIRR',xirr!==null?(xirr>=0?'+':'')+xirr.toFixed(2)+'%/yr':'—',xirr!==null?(xirr>=0?'green':'red'):'','Money-weighted','⚡')}
+        ${card('CAGR',cagr!==null?(cagr>=0?'+':'')+cagr.toFixed(2)+'%/yr':'—',cagr!==null?(cagr>=0?'green':'red'):'','Annualized total return','📐')}
       </div>
       ${sip.fundKey==='other'?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;color:var(--muted)"><span>Set NAV manually:</span><input type="number" step="any" value="${sip.nav||''}" placeholder="NAV" style="width:90px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px" onchange="setSipNavManual('${sip.id}',this.value)"/></div>`:''}
       <div class="table-wrap">
