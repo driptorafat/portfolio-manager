@@ -586,6 +586,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <button class="nav-tab" onclick="switchTab('trading')">Trading</button>
     <button class="nav-tab" onclick="switchTab('investing')">Investing</button>
     <button class="nav-tab" onclick="switchTab('dividends')">💰 Dividends</button>
+    <button class="nav-tab" onclick="switchTab('sip')">🔁 SIP</button>
     <button class="nav-tab" onclick="switchTab('history')">History</button>
     <button class="nav-tab" onclick="switchTab('watchlist')">👁 Watchlist</button>
     <button class="nav-tab" onclick="switchTab('reports')">📄 Reports</button>
@@ -894,6 +895,23 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <div id="rpt-output"></div>
   </div>
 
+  <!-- ══ SIP ══ -->
+  <div id="page-sip" class="page">
+    <div class="summary-grid" id="sip-summary"></div>
+    <div class="section-head">
+      <div>
+        <div class="section-title">🔁 Systematic Investment Plans</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">Track monthly mutual-fund SIPs. Fetch live NAV from IDLC Asset Management to value your units.</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn-secondary" id="sip-nav-btn" style="font-size:12px;padding:6px 14px;background:rgba(34,197,94,.12);color:var(--green);border:1px solid rgba(34,197,94,.25);border-radius:8px;cursor:pointer" onclick="fetchSipNav()">🔄 Fetch Live NAV</button>
+        <button class="btn-add" style="font-size:12px;padding:6px 14px" onclick="openSipModal()">+ New SIP</button>
+      </div>
+    </div>
+    <div id="sip-nav-status" style="font-size:11px;color:var(--muted);margin-bottom:14px"></div>
+    <div id="sip-list"></div>
+  </div>
+
   <!-- ══ HISTORY ══ -->
   <div id="page-history" class="page">
     <div class="filter-bar">
@@ -934,6 +952,10 @@ tbody td{padding:11px 14px;vertical-align:middle}
   <button class="mobile-tab" onclick="switchTab('dividends')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
     Divs
+  </button>
+  <button class="mobile-tab" onclick="switchTab('sip')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 3 5-8"/></svg>
+    SIP
   </button>
   <button class="mobile-tab" onclick="switchTab('history')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></svg>
@@ -1326,6 +1348,69 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <div class="modal-actions">
       <button class="btn-cancel" onclick="document.getElementById('dsex-modal').classList.remove('open')">Cancel</button>
       <button class="btn-primary" onclick="submitDSEXHistory()">Save History</button>
+    </div>
+  </div>
+</div>
+
+<!-- SIP MODAL -->
+<div class="modal-overlay" id="sip-modal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title" id="sip-modal-title">New SIP</div>
+    <div class="form-group">
+      <label>Fund *</label>
+      <select id="sip-fund" onchange="onSipFundChange()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px;outline:none">
+        <option value="balanced">IDLC Balanced Fund</option>
+        <option value="growth">IDLC Growth Fund</option>
+        <option value="shariah">IDLC AML Shariah Fund</option>
+        <option value="income">IDLC Income Fund</option>
+        <option value="other">Other fund (manual NAV)</option>
+      </select>
+    </div>
+    <div class="form-group" id="sip-customname-group" style="display:none">
+      <label>Fund Name *</label>
+      <input id="sip-custom-name" placeholder="e.g. ICB AMCL Balanced Fund"/>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Monthly Amount (৳) *</label>
+        <input id="sip-amount" type="number" step="any" min="1" placeholder="5000"/>
+      </div>
+      <div class="form-group">
+        <label>Start Date</label>
+        <input id="sip-start" type="date"/>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px">After creating, use “Add Installment” each month to record the units you were allotted at that month’s NAV.</div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeSipModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitSip()">Save SIP</button>
+    </div>
+  </div>
+</div>
+
+<!-- SIP INSTALLMENT MODAL -->
+<div class="modal-overlay" id="inst-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title" id="inst-modal-title">Add Installment</div>
+    <div id="inst-fund-label" style="font-size:13px;color:var(--accent2);font-weight:600;margin-bottom:12px"></div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Date *</label>
+        <input id="inst-date" type="date" oninput="calcInstUnits()"/>
+      </div>
+      <div class="form-group">
+        <label>Amount (৳) *</label>
+        <input id="inst-amount" type="number" step="any" min="1" placeholder="5000" oninput="calcInstUnits()"/>
+      </div>
+    </div>
+    <div class="form-group">
+      <label>NAV / Unit Price on that date (৳) * <span id="inst-nav-hint" style="color:var(--muted);font-weight:400"></span></label>
+      <input id="inst-nav" type="number" step="any" min="0.01" placeholder="e.g. 12.44" oninput="calcInstUnits()"/>
+    </div>
+    <div class="calc-result-box" id="inst-result" style="display:grid"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeInstModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitInstallment()">Add Installment</button>
     </div>
   </div>
 </div>
@@ -2089,7 +2174,7 @@ const FALLBACK_COLORS=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#8b5cf
 function getSectorColor(s,i){ return SECTOR_COLORS[s]||FALLBACK_COLORS[i%FALLBACK_COLORS.length]; }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{}, prevPrices:{} };
+let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{}, prevPrices:{}, sips:[] };
 // Cloud sync globals
 let _fbAuth=null,_fbDb=null,_fbUser=null,_saveTimer=null,_cloudLoading=false;
 let formType='buy', formPurpose='investing', editingId=null;
@@ -2123,7 +2208,7 @@ function switchTab(tab) {
   currentTab=tab;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+tab).classList.add('active');
-  const tabs=['dashboard','trading','investing','dividends','history','watchlist','reports'];
+  const tabs=['dashboard','trading','investing','dividends','sip','history','watchlist','reports'];
   document.querySelectorAll('.nav-tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('.mobile-tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   render();
@@ -2516,6 +2601,7 @@ function render(){
   if(currentTab==='trading')    renderTrading();
   if(currentTab==='investing')  renderInvesting();
   if(currentTab==='dividends')  renderDividends();
+  if(currentTab==='sip')        renderSIP();
   if(currentTab==='history')    renderHistory();
   if(currentTab==='watchlist')  renderWatchlist();
 }
@@ -3733,7 +3819,7 @@ function clearAllData() {
   const pid = getActivePortfolioId();
   const name = (getPortfolioList().find(p=>p.id===pid)||{}).name || 'this portfolio';
   if(!confirm(`Delete ALL data for "${name}" permanently?\n\nThis cannot be undone. Export a backup first if needed.`)) return;
-  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{}};
+  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[]};
   save(); render();
   document.getElementById('sync-status').textContent='';
   toast('All data cleared','success');
@@ -4517,7 +4603,7 @@ function doSwitchPortfolio(pid) {
   if (pid === getActivePortfolioId()) return;
   save();
   localStorage.setItem('pm_active', pid);
-  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{}};
+  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[]};
   load();
   updatePortfolioSwitcher();
   render();
@@ -4576,7 +4662,263 @@ function deletePortfolio(pid) {
   toast(`Portfolio "${p.name}" deleted`, 'success');
 }
 
+// ─── SIP (Systematic Investment Plan) ────────────────────────────────────────
+const IDLC_FUNDS={
+  balanced:'IDLC Balanced Fund',
+  growth:'IDLC Growth Fund',
+  shariah:'IDLC AML Shariah Fund',
+  income:'IDLC Income Fund'
+};
+const SIP_NAV_URL='https://idlc.com/aml/nav.php';
+
+// Scrape weekly NAV table from IDLC Asset Management. Returns {key:{nav,date}}.
+async function fetchIDLCNav(){
+  const html=await fetchViaProxy(SIP_NAV_URL,15000);
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const tds=[...doc.querySelectorAll('td')].map(td=>td.textContent.replace(/\s+/g,' ').trim());
+  const out={};
+  for(let i=0;i<tds.length;i++){
+    const t=tds[i].toLowerCase();
+    if(!t.includes('fund')) continue;
+    Object.keys(IDLC_FUNDS).forEach(key=>{
+      if(out[key]||!t.includes(key)) return;
+      const date=tds[i+1]||'';
+      // columns after name: date, cost, fairValue, buy, sale → use fair value
+      const fair=parseFloat((tds[i+3]||'').replace(/,/g,''));
+      const buy=parseFloat((tds[i+4]||'').replace(/,/g,''));
+      const nav=(fair>0?fair:buy);
+      if(nav>0&&nav<100000) out[key]={nav,date};
+    });
+  }
+  return out;
+}
+
+async function fetchSipNav(){
+  const btn=document.getElementById('sip-nav-btn');
+  const st=document.getElementById('sip-nav-status');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Fetching…';}
+  if(st) st.textContent='Fetching latest NAV from IDLC Asset Management…';
+  try{
+    const navs=await fetchIDLCNav();
+    if(!Object.keys(navs).length) throw new Error('Could not read NAV table');
+    let applied=0;
+    (state.sips||[]).forEach(sip=>{
+      const n=navs[sip.fundKey];
+      if(n){ sip.nav=n.nav; sip.navDate=n.date; sip.navAt=new Date().toISOString(); applied++; }
+    });
+    save(); renderSIP();
+    const parts=Object.entries(navs).map(([k,v])=>`${IDLC_FUNDS[k]}: ৳${v.nav}`).join(' · ');
+    if(st) st.textContent=`✅ NAV updated (${navs.balanced?.date||Object.values(navs)[0].date}) — ${parts}`;
+    toast(`✅ Live NAV updated for ${applied} SIP${applied!==1?'s':''}`,'success');
+  }catch(e){
+    if(st) st.textContent='❌ NAV fetch failed — enter NAV manually on each SIP. (IDLC publishes weekly, Sundays.)';
+    toast('NAV fetch failed: '+(e.message||'network'),'error');
+    console.warn('SIP NAV fetch error:',e);
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='🔄 Fetch Live NAV';}
+  }
+}
+
+function sipStats(sip){
+  const inst=sip.installments||[];
+  const invested=inst.reduce((s,i)=>s+(i.amount||0),0);
+  const units=inst.reduce((s,i)=>s+(i.units||0),0);
+  const nav=sip.nav||0;
+  const value=nav>0?units*nav:null;
+  const gain=value!==null?value-invested:null;
+  const retPct=value!==null&&invested>0?gain/invested*100:null;
+  return{invested,units,value,gain,retPct,count:inst.length};
+}
+
+// Money-weighted annualized return for one SIP (bisection)
+function sipXIRR(sip){
+  const flows=(sip.installments||[]).map(i=>({date:new Date(i.date),amount:-(i.amount||0)}));
+  const st=sipStats(sip);
+  if(st.value===null||st.value<=0) return null;
+  flows.push({date:new Date(),amount:st.value});
+  if(flows.length<2||!flows.some(f=>f.amount<0)||!flows.some(f=>f.amount>0)) return null;
+  flows.sort((a,b)=>a.date-b.date);
+  const t0=flows[0].date;
+  const yrs=flows.map(f=>(f.date-t0)/31557600000);
+  if(yrs[yrs.length-1]<0.08) return null;
+  const npv=r=>flows.reduce((s,f,i)=>s+f.amount/Math.pow(1+r,yrs[i]),0);
+  let lo=-0.9999,hi=10,flo=npv(lo),fhi=npv(hi);
+  if(flo*fhi>0) return null;
+  for(let k=0;k<100;k++){const mid=(lo+hi)/2,fm=npv(mid);if(Math.abs(fm)<1e-7)return mid*100;if(flo*fm<0){hi=mid;fhi=fm;}else{lo=mid;flo=fm;}}
+  return (lo+hi)/2*100;
+}
+
+function renderSIP(){
+  const sips=state.sips||[];
+  // Aggregate summary
+  let tInv=0,tVal=0,tValHas=false;
+  sips.forEach(sip=>{const s=sipStats(sip);tInv+=s.invested;if(s.value!==null){tVal+=s.value;tValHas=true;}});
+  const tGain=tValHas?tVal-tInv:null;
+  const tRet=tValHas&&tInv>0?tGain/tInv*100:null;
+  document.getElementById('sip-summary').innerHTML=
+    card('SIP Invested',fmt(tInv),'','Total contributed across SIPs','💰')+
+    card('Current Value',tValHas?fmt(tVal):'—','','Units × latest NAV','💎')+
+    card('Total Gain',tGain!==null?fmtPnl(tGain):'—',tGain!==null?(tGain>=0?'green':'red'):'','Value − invested','📈')+
+    card('Return',tRet!==null?(tRet>=0?'+':'')+tRet.toFixed(2)+'%':'—',tRet!==null?(tRet>=0?'green':'red'):'','On invested capital','🎯')+
+    card('Active SIPs',String(sips.length),'',sips.reduce((s,x)=>s+(x.installments||[]).length,0)+' installments logged','🔁');
+
+  if(!sips.length){
+    document.getElementById('sip-list').innerHTML='<div class="chart-card" style="text-align:center;padding:40px;color:var(--muted)">No SIPs yet. Click <b>+ New SIP</b> to add one — e.g. IDLC Balanced Fund, ৳5,000/month.</div>';
+    return;
+  }
+
+  document.getElementById('sip-list').innerHTML=sips.map(sip=>{
+    const s=sipStats(sip);
+    const xirr=sipXIRR(sip);
+    const navLine=sip.nav?`NAV ৳${sip.nav}${sip.navDate?' · '+sip.navDate:''}`:'No NAV yet — fetch or enter manually';
+    const instRows=[...(sip.installments||[])].sort((a,b)=>b.date.localeCompare(a.date)).map(i=>`
+      <tr>
+        <td>${fmtDate(i.date)}</td>
+        <td>${fmt(i.amount)}</td>
+        <td>${i.nav?'৳'+(+i.nav).toFixed(4):'—'}</td>
+        <td><strong>${(i.units||0).toFixed(4)}</strong></td>
+        <td>${sip.nav?fmt((i.units||0)*sip.nav):'—'}</td>
+        <td><button onclick="deleteInstallment('${sip.id}','${i.id}')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:13px" title="Delete">✕</button></td>
+      </tr>`).join('')||emptyRow(6,'No installments yet — click “Add Installment”.');
+    return`
+    <div class="chart-card" style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
+        <div>
+          <div style="font-size:16px;font-weight:700">${sip.fundName}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">৳${(sip.amount||0).toLocaleString('en-US')}/month · ${navLine}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-add" style="font-size:11px;padding:5px 11px" onclick="openInstModal('${sip.id}',true)">+ Add this month (৳${(sip.amount||0).toLocaleString('en-US')})</button>
+          <button class="btn-secondary" style="font-size:11px;padding:5px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer" onclick="openInstModal('${sip.id}',false)">Custom…</button>
+          <button class="btn-secondary" style="font-size:11px;padding:5px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer" onclick="editSip('${sip.id}')">✏️</button>
+          <button class="btn-secondary" style="font-size:11px;padding:5px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--red);cursor:pointer" onclick="deleteSip('${sip.id}')">🗑️</button>
+        </div>
+      </div>
+      <div class="summary-grid" style="margin-bottom:14px">
+        ${card('Invested',fmt(s.invested),'',s.count+' installment'+(s.count!==1?'s':''),'💵')}
+        ${card('Units',s.units.toFixed(4),'','Total units held','🧮')}
+        ${card('Value',s.value!==null?fmt(s.value):'—',s.value!==null?(s.gain>=0?'green':'red'):'',sip.nav?'At NAV ৳'+sip.nav:'Fetch NAV','💎')}
+        ${card('Gain',s.gain!==null?fmtPnl(s.gain)+(s.retPct!==null?' ('+(s.retPct>=0?'+':'')+s.retPct.toFixed(1)+'%)':''):'—',s.gain!==null?(s.gain>=0?'green':'red'):'','Unrealized','📈')}
+        ${card('XIRR',xirr!==null?(xirr>=0?'+':'')+xirr.toFixed(2)+'%/yr':'—',xirr!==null?(xirr>=0?'green':'red'):'','Money-weighted','⚡')}
+      </div>
+      ${sip.fundKey==='other'?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;color:var(--muted)"><span>Set NAV manually:</span><input type="number" step="any" value="${sip.nav||''}" placeholder="NAV" style="width:90px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px" onchange="setSipNavManual('${sip.id}',this.value)"/></div>`:''}
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Amount</th><th>NAV</th><th>Units</th><th>Value</th><th></th></tr></thead>
+          <tbody>${instRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+let editingSipId=null;
+function openSipModal(){
+  editingSipId=null;
+  document.getElementById('sip-modal-title').textContent='New SIP';
+  document.getElementById('sip-fund').value='balanced';
+  document.getElementById('sip-custom-name').value='';
+  document.getElementById('sip-amount').value='';
+  document.getElementById('sip-start').value=new Date().toISOString().split('T')[0];
+  onSipFundChange();
+  document.getElementById('sip-modal').classList.add('open');
+}
+function closeSipModal(){ document.getElementById('sip-modal').classList.remove('open'); }
+function onSipFundChange(){
+  const v=document.getElementById('sip-fund').value;
+  document.getElementById('sip-customname-group').style.display=v==='other'?'':'none';
+}
+function editSip(id){
+  const sip=(state.sips||[]).find(s=>s.id===id); if(!sip)return;
+  editingSipId=id;
+  document.getElementById('sip-modal-title').textContent='Edit SIP';
+  document.getElementById('sip-fund').value=sip.fundKey;
+  document.getElementById('sip-custom-name').value=sip.fundKey==='other'?sip.fundName:'';
+  document.getElementById('sip-amount').value=sip.amount;
+  document.getElementById('sip-start').value=sip.startDate||'';
+  onSipFundChange();
+  document.getElementById('sip-modal').classList.add('open');
+}
+function submitSip(){
+  const key=document.getElementById('sip-fund').value;
+  const amount=parseFloat(document.getElementById('sip-amount').value);
+  const start=document.getElementById('sip-start').value;
+  const customName=document.getElementById('sip-custom-name').value.trim();
+  if(!amount||amount<=0) return toast('Enter a valid monthly amount','error');
+  if(key==='other'&&!customName) return toast('Enter the fund name','error');
+  const fundName=key==='other'?customName:IDLC_FUNDS[key];
+  state.sips=state.sips||[];
+  if(editingSipId){
+    const sip=state.sips.find(s=>s.id===editingSipId);
+    if(sip){ sip.fundKey=key; sip.fundName=fundName; sip.amount=amount; sip.startDate=start; }
+    toast('SIP updated','success');
+  } else {
+    state.sips.push({id:'sip_'+Date.now(),fundKey:key,fundName,amount,startDate:start,installments:[],nav:null,navDate:null,navAt:null});
+    toast('SIP created','success');
+  }
+  save(); closeSipModal(); renderSIP();
+}
+function deleteSip(id){
+  const sip=(state.sips||[]).find(s=>s.id===id); if(!sip)return;
+  if(!confirm(`Delete the SIP for ${sip.fundName} and all its installments?`)) return;
+  state.sips=state.sips.filter(s=>s.id!==id);
+  save(); renderSIP(); toast('SIP deleted','success');
+}
+
+let instSipId=null;
+function openInstModal(sipId,thisMonth){
+  const sip=(state.sips||[]).find(s=>s.id===sipId); if(!sip)return;
+  instSipId=sipId;
+  document.getElementById('inst-modal-title').textContent='Add Installment';
+  document.getElementById('inst-fund-label').textContent=sip.fundName;
+  document.getElementById('inst-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('inst-amount').value=thisMonth?sip.amount:'';
+  document.getElementById('inst-nav').value=sip.nav||'';
+  document.getElementById('inst-nav-hint').textContent=sip.nav?`(latest: ৳${sip.nav}${sip.navDate?', '+sip.navDate:''})`:'(fetch live NAV first, or enter manually)';
+  calcInstUnits();
+  document.getElementById('inst-modal').classList.add('open');
+}
+function closeInstModal(){ document.getElementById('inst-modal').classList.remove('open'); }
+function calcInstUnits(){
+  const amt=parseFloat(document.getElementById('inst-amount').value)||0;
+  const nav=parseFloat(document.getElementById('inst-nav').value)||0;
+  const box=document.getElementById('inst-result');
+  if(amt>0&&nav>0){
+    const units=amt/nav;
+    box.innerHTML=`<div class="calc-result-item"><div class="calc-result-lbl">Units Allotted</div><div class="calc-result-val">${units.toFixed(4)}</div></div>
+      <div class="calc-result-item"><div class="calc-result-lbl">At NAV</div><div class="calc-result-val">৳${nav.toFixed(4)}</div></div>`;
+    box.style.display='grid';
+  } else { box.style.display='none'; }
+}
+function submitInstallment(){
+  const sip=(state.sips||[]).find(s=>s.id===instSipId); if(!sip)return;
+  const date=document.getElementById('inst-date').value;
+  const amount=parseFloat(document.getElementById('inst-amount').value);
+  const nav=parseFloat(document.getElementById('inst-nav').value);
+  if(!date) return toast('Pick a date','error');
+  if(!amount||amount<=0) return toast('Enter a valid amount','error');
+  if(!nav||nav<=0) return toast('Enter the NAV / unit price','error');
+  sip.installments=sip.installments||[];
+  sip.installments.push({id:'i_'+Date.now(),date,amount,nav,units:amount/nav});
+  // Keep latest NAV on the SIP if this installment is the newest
+  if(!sip.navDate||date>=(sip.navAt?sip.navAt.split('T')[0]:'')) { if(!sip.nav) sip.nav=nav; }
+  save(); closeInstModal(); renderSIP();
+  toast(`Added ৳${amount.toLocaleString('en-US')} → ${(amount/nav).toFixed(4)} units`,'success');
+}
+function deleteInstallment(sipId,instId){
+  const sip=(state.sips||[]).find(s=>s.id===sipId); if(!sip)return;
+  sip.installments=(sip.installments||[]).filter(i=>i.id!==instId);
+  save(); renderSIP(); toast('Installment removed','success');
+}
+function setSipNavManual(sipId,val){
+  const sip=(state.sips||[]).find(s=>s.id===sipId); if(!sip)return;
+  const v=parseFloat(val);
+  if(v>0){ sip.nav=v; sip.navDate='manual'; sip.navAt=new Date().toISOString(); save(); renderSIP(); }
+}
+
 // ─── INIT ─────────────────────────────────────────────────────────────────────
+document.getElementById('sip-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeSipModal();});
+document.getElementById('inst-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeInstModal();});
 document.getElementById('modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
 document.getElementById('wl-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeWatchlistModal();});
 document.getElementById('calc-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCalcModal();});
