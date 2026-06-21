@@ -700,6 +700,12 @@ tbody td{padding:11px 14px;vertical-align:middle}
       </div>
     </div>
 
+    <!-- Monthly Investments (Shares + SIP) -->
+    <div class="chart-card" style="margin-bottom:18px">
+      <div class="chart-card-title">📆 Monthly Investment — Shares + SIP</div>
+      <div id="monthly-invest"></div>
+    </div>
+
     <!-- Row: Sector Chart + Holdings -->
     <div class="dash-row dash-row-4" style="margin-bottom:18px">
       <div class="chart-card">
@@ -2938,6 +2944,106 @@ function renderDashboard(){
   // ── Contribution Analysis ──
   renderContribution();
   renderSectorPnL();
+  renderMonthlyInvest();
+}
+
+// Per-month money deployed into share buys vs SIP installments
+function getMonthlyInvestments(){
+  const months={};
+  state.transactions.forEach(t=>{
+    if(t.type!=='buy')return;
+    const m=(t.date||'').slice(0,7); if(m.length!==7)return;
+    (months[m]=months[m]||{shares:0,sip:0}).shares+=t.quantity*t.price;
+  });
+  (state.sips||[]).forEach(sip=>(sip.installments||[]).forEach(i=>{
+    const m=(i.date||'').slice(0,7); if(m.length!==7)return;
+    (months[m]=months[m]||{shares:0,sip:0}).sip+=i.amount||0;
+  }));
+  return months;
+}
+
+// Combined stocks + SIP return (stock side mirrors the dashboard's Total Return card)
+function getCombinedReturn(){
+  let sInv=0,sReal=0,sUnreal=0,sCash=0,sBonus=0;
+  getSymbols().forEach(sym=>{
+    const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
+    const cost=inv.heldCost+trd.heldCost, heldQty=inv.heldQty+trd.heldQty;
+    const ds=getDivStats(sym), cp=state.currentPrices[sym]||0;
+    sInv+=cost; sReal+=inv.realized+trd.realized;
+    if(cp&&heldQty>0) sUnreal+=heldQty*cp-cost;
+    sCash+=ds.totalCashAmount;
+    if(cp&&ds.totalBonusShares>0) sBonus+=ds.totalBonusShares*cp;
+  });
+  const stockReturn=sReal+sUnreal+sCash+sBonus;
+  let pInv=0,pVal=0,pHas=false;
+  (state.sips||[]).forEach(sip=>{const s=sipStats(sip); pInv+=s.invested; if(s.value!==null){pVal+=s.value;pHas=true;}});
+  const sipReturn=pHas?pVal-pInv:0;
+  const combInv=sInv+pInv, combRet=stockReturn+(pHas?sipReturn:0);
+  return{stockInvested:sInv,stockReturn,sipInvested:pInv,sipReturn,sipHas:pHas,
+    combinedInvested:combInv,combinedReturn:combRet,combinedPct:combInv>0?combRet/combInv*100:null};
+}
+
+function renderMonthlyInvest(){
+  const el=document.getElementById('monthly-invest'); if(!el)return;
+  const data=getMonthlyInvestments();
+  const allMonths=Object.keys(data).sort();
+  const ov=getCombinedReturn();
+  if(!allMonths.length){
+    el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:24px 0;text-align:center">Add share trades or SIP installments to see your monthly investment.</div>';
+    return;
+  }
+  const nowM=new Date().toISOString().slice(0,7);
+  const cur=data[nowM]||{shares:0,sip:0};
+  const totShares=allMonths.reduce((s,m)=>s+data[m].shares,0);
+  const totSip=allMonths.reduce((s,m)=>s+data[m].sip,0);
+  const grand=totShares+totSip;
+  const avg=grand/allMonths.length;
+
+  const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const fmtM=m=>{const[y,mo]=m.split('-');return MN[+mo-1]+" '"+y.slice(2);};
+  const cShares='#6366f1', cSip='#22c55e';
+
+  // mini stat helper
+  const stat=(lbl,val,sub,color)=>`<div style="flex:1;min-width:130px">
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px">${lbl}</div>
+    <div style="font-size:19px;font-weight:700;margin-top:2px${color?';color:'+color:''}">${val}</div>
+    ${sub?`<div style="font-size:11px;color:var(--muted);margin-top:1px">${sub}</div>`:''}</div>`;
+
+  const retColor=ov.combinedPct==null?'':ov.combinedReturn>=0?'var(--green)':'var(--red)';
+  const statsRow=`<div style="display:flex;flex-wrap:wrap;gap:18px;margin-bottom:18px">
+    ${stat('This Month',fmt(cur.shares+cur.sip),`Shares ${fmt(cur.shares)} · SIP ${fmt(cur.sip)}`)}
+    ${stat('Monthly Average',fmt(avg),`Over ${allMonths.length} active month${allMonths.length!==1?'s':''}`)}
+    ${stat('Total Deployed',fmt(grand),`Shares ${fmt(totShares)} · SIP ${fmt(totSip)}`)}
+    ${stat('Combined Return',ov.combinedPct!=null?fmtPnl(ov.combinedReturn)+' ('+(ov.combinedPct>=0?'+':'')+ov.combinedPct.toFixed(1)+'%)':'—','Shares + SIP, vs invested',retColor)}
+  </div>`;
+
+  // chart — last 12 months, stacked bars (shares + sip)
+  const months=allMonths.slice(-12);
+  const maxV=Math.max(...months.map(m=>data[m].shares+data[m].sip),1);
+  const W=800,H=210,pT=10,pB=34,pL=46,pR=10,cH=H-pT-pB,cW=W-pL-pR;
+  const n=months.length, slot=cW/n, bw=Math.min(46,slot*0.6);
+  const yOf=v=>pT+cH-(v/maxV)*cH;
+  let grid='',yLab='';
+  for(let i=0;i<=3;i++){const v=maxV/3*i,y=yOf(v);
+    grid+=`<line x1="${pL}" y1="${y.toFixed(1)}" x2="${W-pR}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="0.8" stroke-dasharray="4,4"/>`;
+    yLab+=`<text x="${pL-5}" y="${(y+3).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="9" font-family="system-ui">৳${fmtYAxis(v)}</text>`;}
+  const bars=months.map((m,i)=>{
+    const x=pL+slot*i+(slot-bw)/2;
+    const sh=data[m].shares, sp=data[m].sip;
+    const shH=(sh/maxV)*cH, spH=(sp/maxV)*cH;
+    const yTot=yOf(sh+sp);
+    let r='';
+    if(sh>0) r+=`<rect x="${x.toFixed(1)}" y="${yOf(sh).toFixed(1)}" width="${bw.toFixed(1)}" height="${shH.toFixed(1)}" fill="${cShares}" rx="2"><title>${fmtM(m)} shares: ${fmt(sh)}</title></rect>`;
+    if(sp>0) r+=`<rect x="${x.toFixed(1)}" y="${(yOf(sh)-spH).toFixed(1)}" width="${bw.toFixed(1)}" height="${spH.toFixed(1)}" fill="${cSip}" rx="2"><title>${fmtM(m)} SIP: ${fmt(sp)}</title></rect>`;
+    const lbl=`<text x="${(x+bw/2).toFixed(1)}" y="${H-pB+15}" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui">${fmtM(m)}</text>`;
+    const tot=`<text x="${(x+bw/2).toFixed(1)}" y="${(yTot-4).toFixed(1)}" text-anchor="middle" fill="var(--muted)" font-size="8.5" font-family="system-ui">${((sh+sp)/1000).toFixed(0)}k</text>`;
+    return r+lbl+tot;
+  }).join('');
+  const legend=`<div style="display:flex;gap:16px;font-size:11px;color:var(--muted);margin-bottom:6px">
+    <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:${cShares}"></span>Shares buying</span>
+    <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:${cSip}"></span>SIP</span>
+  </div>`;
+  el.innerHTML=statsRow+legend+`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px">${grid}${yLab}${bars}</svg>`;
 }
 
 function renderDonut(data){
