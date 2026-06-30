@@ -692,6 +692,14 @@ tbody td{padding:11px 14px;vertical-align:middle}
 
 <div class="container">
 
+  <div id="backup-nudge" style="display:none;align-items:center;gap:12px;background:var(--surface2);border:1px solid var(--yellow,#f59e0b);border-radius:10px;padding:11px 14px;margin-bottom:16px">
+    <span style="font-size:18px">💾</span>
+    <span id="backup-nudge-msg" style="font-size:13px;flex:1;color:var(--text)"></span>
+    <button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="exportData()">Back up now</button>
+    <button class="mini-btn" onclick="snoozeBackupNudge()">Later</button>
+  </div>
+  <div id="proxy-indicator" style="display:none;align-items:center;gap:6px;font-size:12px;margin-bottom:14px"></div>
+
   <!-- ══ DASHBOARD ══ -->
   <div id="page-dashboard" class="page active">
     <div class="customize-wrap" style="display:flex;justify-content:flex-end;margin-bottom:10px;position:relative">
@@ -1521,13 +1529,14 @@ const PROXIES = [
   u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
 ];
 
+let _proxyHealth={state:'unknown',idx:-1}; // 'ok' (first proxy), 'degraded' (fallback used), 'down'
 async function fetchViaProxy(targetUrl, ms=15000) {
   let last;
-  for (const fn of PROXIES) {
+  for (let i=0;i<PROXIES.length;i++) {
     try {
       const ctrl=new AbortController(), tid=setTimeout(()=>ctrl.abort(),ms);
       let res;
-      try { res=await fetch(fn(targetUrl),{signal:ctrl.signal}); }
+      try { res=await fetch(PROXIES[i](targetUrl),{signal:ctrl.signal}); }
       finally { clearTimeout(tid); }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       let txt=await res.text();
@@ -1535,11 +1544,18 @@ async function fetchViaProxy(targetUrl, ms=15000) {
       if (txt&&txt.startsWith('{"contents"')) {
         try { txt=JSON.parse(txt).contents||''; } catch(_){}
       }
-      if (txt&&txt.length>200) return txt;
+      if (txt&&txt.length>200){ _proxyHealth={state:i===0?'ok':'degraded',idx:i}; updateProxyIndicator(); return txt; }
       throw new Error('Empty response');
     } catch(e){ last=e; }
   }
+  _proxyHealth={state:'down',idx:-1}; updateProxyIndicator();
   throw last||new Error('All proxies failed');
+}
+function updateProxyIndicator(){
+  const el=document.getElementById('proxy-indicator'); if(!el) return;
+  if(_proxyHealth.state==='down'){ el.style.display='inline-flex'; el.style.color='var(--red)'; el.textContent='⚠️ Live-data proxies unreachable — prices may be stale'; }
+  else if(_proxyHealth.state==='degraded'){ el.style.display='inline-flex'; el.style.color='var(--yellow,#f59e0b)'; el.textContent='⚠️ Using a fallback data source — prices may be delayed'; }
+  else { el.style.display='none'; }
 }
 
 // ─── THEMES ──────────────────────────────────────────────────────────────────
@@ -4178,7 +4194,45 @@ function exportData() {
   const a=document.createElement('a');
   a.href=url; a.download=`portfolio-backup-${new Date().toISOString().slice(0,10)}.json`;
   a.click(); URL.revokeObjectURL(url);
+  state.lastBackupAt=new Date().toISOString(); save();
+  const b=document.getElementById('backup-nudge'); if(b) b.style.display='none';
   toast('Portfolio exported successfully','success');
+}
+// Show a dismissible banner if the local data hasn't been backed up in 30+ days
+function checkBackupNudge(){
+  const el=document.getElementById('backup-nudge'); if(!el) return;
+  if(!(state.transactions||[]).length && !(state.sips||[]).length){ el.style.display='none'; return; }
+  if(sessionStorage.getItem('pm_backup_snoozed')){ el.style.display='none'; return; }
+  const last=state.lastBackupAt?new Date(state.lastBackupAt):null;
+  const days=last?Math.floor((Date.now()-last)/86400000):null;
+  if(days===null || days>=30){
+    const msg=last?`It's been ${days} days since your last backup.`:`You haven't backed up your portfolio yet.`;
+    el.querySelector('#backup-nudge-msg').textContent=msg+' Your data lives only in this browser unless you export it or sync to cloud.';
+    el.style.display='flex';
+  } else { el.style.display='none'; }
+}
+function snoozeBackupNudge(){ sessionStorage.setItem('pm_backup_snoozed','1'); document.getElementById('backup-nudge').style.display='none'; }
+
+// Hidden invariant checks — surface silent data/math regressions in the console
+function runSelfChecks(){
+  try{
+    const issues=[];
+    getSymbols().forEach(sym=>{
+      const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
+      const buys=state.transactions.filter(t=>t.type==='buy'&&t.symbol===sym).reduce((s,t)=>s+t.quantity,0);
+      const sells=state.transactions.filter(t=>t.type==='sell'&&t.symbol===sym).reduce((s,t)=>s+t.quantity,0);
+      const held=inv.heldQty+trd.heldQty, expected=Math.max(0,buys-sells);
+      if(Math.abs(held-expected)>0.01) issues.push(`FIFO ${sym}: held ${held.toFixed(2)} ≠ buys−sells ${expected.toFixed(2)}`);
+    });
+    (state.sips||[]).forEach(sip=>(sip.installments||[]).forEach(i=>{
+      if(i.nav>0&&Math.abs((i.units||0)-i.amount/i.nav)>0.01) issues.push(`SIP ${sip.fundName} ${i.date}: units ≠ amount/NAV`);
+    }));
+    const xirr=(typeof calcXIRR==='function')?calcXIRR():null;
+    if(xirr!==null&&(xirr<-100||xirr>100000)) issues.push(`XIRR out of range: ${xirr}`);
+    if(cashBalance()<0) issues.push(`Cash balance negative: ${cashBalance()}`);
+    if(issues.length) console.warn(`[self-check] ${issues.length} issue(s):`,issues);
+    return issues;
+  }catch(e){ console.warn('[self-check] error',e); return []; }
 }
 function importData() {
   toggleDataMenu(true);
@@ -4247,7 +4301,44 @@ function buildRiskReport(){
 }
 
 // ─── REBALANCING ─────────────────────────────────────────────────────────────
+function buildAssetClassRebalance(){
+  const nw=getNetWorth();
+  const classes=[['stocks','📈 Shares',nw.shares],['sip','🔁 SIP / Mutual funds',nw.sip],['cash','💵 Cash',nw.cash]];
+  const total=nw.total;
+  if(total<=0) return '';
+  const tgts=state.assetTargets||{};
+  const tgtSum=['stocks','sip','cash'].reduce((s,k)=>s+(+tgts[k]||0),0);
+  const rows=classes.map(([key,label,val])=>{
+    const curPct=total>0?val/total*100:0;
+    const tgt=tgts[key]!=null&&tgts[key]!==''?+tgts[key]:'';
+    const delta=tgt!==''?curPct-tgt:null;
+    const action=delta!==null&&Math.abs(delta)>0.5
+      ?(delta>0?`Trim ${fmt(val-total*tgt/100)} (over ${Math.abs(delta).toFixed(1)}%)`
+                :`Add ${fmt(total*tgt/100-val)} (under ${Math.abs(delta).toFixed(1)}%)`)
+      :(delta!==null?'✅ On target':'');
+    const ac=delta===null?'':delta>2?'color:#ef4444':delta<-2?'color:#22c55e':'color:var(--muted)';
+    return`<tr><td><b>${label}</b></td><td>${fmt(val)}</td><td>${curPct.toFixed(1)}%</td>
+      <td><input type="number" min="0" max="100" step="1" value="${tgt}" placeholder="0"
+        style="width:64px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:3px 6px;color:var(--text);font-size:12px"
+        onchange="setAssetTarget('${key}',this.value)"/></td>
+      <td style="${ac};font-size:12px">${action}</td></tr>`;
+  }).join('');
+  const warn=tgtSum>0&&Math.abs(tgtSum-100)>1?`<div style="color:#f59e0b;font-size:12px;margin-bottom:10px">⚠️ Asset-class targets sum to ${tgtSum.toFixed(0)}% — adjust to reach 100%</div>`:'';
+  return`<div style="font-weight:700;font-size:15px;margin:6px 0 10px">⚖️ Asset-Class Balance</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px">Set a target split across Shares, SIP, and Cash (of total net worth ${fmt(total)}).</p>
+    ${warn}
+    <div class="table-wrap" style="margin-bottom:24px"><table>
+    <thead><tr><th>Asset Class</th><th>Value</th><th>Current %</th><th>Target %</th><th>Action</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
+function setAssetTarget(key,val){
+  state.assetTargets=state.assetTargets||{};
+  const v=parseFloat(val);
+  if(isNaN(v)||v<0) delete state.assetTargets[key]; else state.assetTargets[key]=v;
+  save();
+}
 function buildRebalanceReport(){
+  const assetBlock=buildAssetClassRebalance();
   const sectorVals={};
   let total=0;
   getSymbols().forEach(sym=>{
@@ -4260,7 +4351,7 @@ function buildRebalanceReport(){
     sectorVals[sec]=(sectorVals[sec]||0)+val;
     total+=val;
   });
-  if(!Object.keys(sectorVals).length) return '<div style="text-align:center;padding:40px;color:var(--muted)">Add holdings to see rebalancing suggestions</div>';
+  if(!Object.keys(sectorVals).length) return assetBlock||'<div style="text-align:center;padding:40px;color:var(--muted)">Add holdings to see rebalancing suggestions</div>';
 
   const tgts=state.targetAllocations||{};
   const tgtSum=Object.values(tgts).reduce((a,b)=>a+(+b||0),0);
@@ -4289,7 +4380,9 @@ function buildRebalanceReport(){
   const tgtWarn=tgtSum>0&&Math.abs(tgtSum-100)>1
     ?`<div style="color:#f59e0b;font-size:12px;margin-bottom:12px">⚠️ Target allocations sum to ${tgtSum.toFixed(1)}% — adjust to reach 100%</div>`:'';
 
-  return`${tgtWarn}
+  return`${assetBlock}
+  <div style="font-weight:700;font-size:15px;margin:6px 0 10px">🥧 Sector Balance</div>
+  ${tgtWarn}
   <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Set target % for each sector. The tool will show how much to buy/sell to reach your targets.</p>
   <div class="table-wrap">
   <table><thead><tr><th>Sector</th><th>Current Value</th><th>Current %</th><th>Target %</th><th>Action</th></tr></thead>
@@ -5344,6 +5437,8 @@ if(Object.keys(state.currentPrices||{}).length>0) savePortfolioSnapshot();
 const savedTheme=localStorage.getItem('pm_theme')||'dark';
 setTheme(savedTheme);
 render();
+checkBackupNudge();
+runSelfChecks();
 if(state.lastSync)document.getElementById('sync-status').textContent='Last sync: '+new Date(state.lastSync).toLocaleTimeString();
 
 // ── Auto-init Firebase (restores auth session if previously signed in) ──
