@@ -706,6 +706,18 @@ tbody td{padding:11px 14px;vertical-align:middle}
       <div id="monthly-invest"></div>
     </div>
 
+    <!-- Row: Share Allocation + Shares-vs-SIP -->
+    <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+      <div class="chart-card">
+        <div class="chart-card-title">🥧 Share Allocation</div>
+        <div class="chart-inner" id="share-alloc-chart"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">🥧 Shares vs SIP</div>
+        <div class="chart-inner" id="asset-alloc-chart"></div>
+      </div>
+    </div>
+
     <!-- Row: Sector Chart + Holdings -->
     <div class="dash-row dash-row-4" style="margin-bottom:18px">
       <div class="chart-card">
@@ -2945,6 +2957,40 @@ function renderDashboard(){
   renderContribution();
   renderSectorPnL();
   renderMonthlyInvest();
+  renderShareAllocation();
+  renderAssetAllocation();
+}
+
+// Current market value of each held stock (incl. bonus shares; falls back to cost)
+function shareMarketValue(sym){
+  const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
+  const heldQty=inv.heldQty+trd.heldQty; if(heldQty<=0) return 0;
+  const ds=getDivStats(sym), cp=state.currentPrices[sym]||0;
+  return cp?(heldQty+ds.totalBonusShares)*cp:(inv.heldCost+trd.heldCost);
+}
+function buildShareAllocation(){
+  const out=[];
+  getSymbols().forEach(sym=>{ const v=shareMarketValue(sym); if(v>0) out.push({sym,v}); });
+  out.sort((a,b)=>b.v-a.v);
+  return out.map((o,i)=>({sector:o.sym,value:o.v,color:FALLBACK_COLORS[i%FALLBACK_COLORS.length]}));
+}
+function renderShareAllocation(){
+  const el=document.getElementById('share-alloc-chart'); if(!el)return;
+  el.innerHTML=renderDonut(buildShareAllocation(),{centerSub:'holdings',empty:'Add share holdings to see allocation'});
+}
+function buildAssetAllocation(){
+  let shareVal=0;
+  getSymbols().forEach(sym=>{ shareVal+=shareMarketValue(sym); });
+  let sipVal=0;
+  (state.sips||[]).forEach(sip=>{ const s=sipStats(sip); sipVal+=(s.value!==null?s.value:s.invested); });
+  const out=[];
+  if(shareVal>0) out.push({sector:'Shares',value:shareVal,color:'#6366f1'});
+  if(sipVal>0)   out.push({sector:'SIP (Mutual Fund)',value:sipVal,color:'#22c55e'});
+  return out;
+}
+function renderAssetAllocation(){
+  const el=document.getElementById('asset-alloc-chart'); if(!el)return;
+  el.innerHTML=renderDonut(buildAssetAllocation(),{centerSub:'total',empty:'Add shares or a SIP to compare'});
 }
 
 // Per-month money deployed into share buys vs SIP installments
@@ -3046,9 +3092,10 @@ function renderMonthlyInvest(){
   el.innerHTML=statsRow+legend+`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px">${grid}${yLab}${bars}</svg>`;
 }
 
-function renderDonut(data){
+function renderDonut(data,opts){
+  opts=opts||{};
   const total=data.reduce((s,d)=>s+d.value,0);
-  if(!total)return`<div style="color:var(--muted);padding:40px 20px;text-align:center;font-size:13px">Add holdings to see sector allocation</div>`;
+  if(!total)return`<div style="color:var(--muted);padding:40px 20px;text-align:center;font-size:13px">${opts.empty||'Add holdings to see sector allocation'}</div>`;
   const cx=110,cy=110,R=85,r=52,gap=0.018;
   let angle=-Math.PI/2,paths='';
   data.forEach(d=>{
@@ -3069,7 +3116,7 @@ function renderDonut(data){
     </div>`).join('');
   return`<svg width="220" height="220" viewBox="0 0 220 220">${paths}
     <text x="${cx}" y="${cy-7}" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">৳${lbl}</text>
-    <text x="${cx}" y="${cy+11}" text-anchor="middle" fill="#94a3b8" font-size="10.5">invested</text>
+    <text x="${cx}" y="${cy+11}" text-anchor="middle" fill="#94a3b8" font-size="10.5">${opts.centerSub||'invested'}</text>
   </svg><div class="legend">${legend}</div>`;
 }
 
