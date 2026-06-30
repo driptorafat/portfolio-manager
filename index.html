@@ -322,6 +322,14 @@ tbody td{padding:11px 14px;vertical-align:middle}
   .dash-row-4{grid-template-columns:1fr 1fr}
 }
 
+/* ── 900px — stack the 3 allocation donuts ── */
+@media(max-width:900px){
+  .dash-donuts{grid-template-columns:1fr 1fr!important}
+}
+@media(max-width:560px){
+  .dash-donuts{grid-template-columns:1fr!important}
+}
+
 /* ── 1024px — iPad landscape ── */
 @media(max-width:1024px){
   .nav-tabs{gap:1px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;max-width:calc(100vw - 320px)}
@@ -706,11 +714,15 @@ tbody td{padding:11px 14px;vertical-align:middle}
       <div id="monthly-invest"></div>
     </div>
 
-    <!-- Row: Share Allocation + Shares-vs-SIP -->
-    <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+    <!-- Row: all three allocation donuts -->
+    <div class="dash-donuts" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:18px">
       <div class="chart-card">
         <div class="chart-card-title">🥧 Share Allocation</div>
         <div class="chart-inner" id="share-alloc-chart"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title">🥧 Sector Allocation</div>
+        <div class="chart-inner" id="sector-chart"></div>
       </div>
       <div class="chart-card">
         <div class="chart-card-title">🥧 Shares vs SIP</div>
@@ -718,23 +730,15 @@ tbody td{padding:11px 14px;vertical-align:middle}
       </div>
     </div>
 
-    <!-- Row: Sector Chart + Holdings -->
-    <div class="dash-row dash-row-4" style="margin-bottom:18px">
+    <!-- Row: Holdings tables -->
+    <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
       <div class="chart-card">
-        <div class="chart-card-title">🥧 Sector Allocation</div>
-        <div class="chart-inner" id="sector-chart"></div>
+        <div class="section-title" style="margin-bottom:10px">Trading Holdings</div>
+        <div class="table-wrap" id="dash-trading-table"></div>
       </div>
-      <div>
-        <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div>
-            <div class="section-title" style="margin-bottom:10px">Trading Holdings</div>
-            <div class="table-wrap" id="dash-trading-table"></div>
-          </div>
-          <div>
-            <div class="section-title" style="margin-bottom:10px">Investment Holdings</div>
-            <div class="table-wrap" id="dash-investing-table"></div>
-          </div>
-        </div>
+      <div class="chart-card">
+        <div class="section-title" style="margin-bottom:10px">Investment Holdings</div>
+        <div class="table-wrap" id="dash-investing-table"></div>
       </div>
     </div>
 
