@@ -84,6 +84,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .ret-mini-val.red{color:var(--red)}
 .ret-mini-sub{font-size:10px;color:var(--muted);margin-top:2px}
 .widget-hidden{display:none!important}
+.mini-btn{font-size:11px;padding:4px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--accent2);cursor:pointer;font-weight:600;white-space:nowrap}
+.mini-btn:hover{border-color:var(--accent2)}
+.nw-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.goal-bar-track{height:8px;background:var(--border);border-radius:5px;overflow:hidden;margin:7px 0 5px}
+.goal-bar-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent),var(--accent2))}
 
 /* ── SECTION HEADER ── */
 .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -695,6 +700,18 @@ tbody td{padding:11px 14px;vertical-align:middle}
     </div>
     <div class="summary-grid" id="summary-cards"></div>
     <div id="returns-detail" class="returns-detail"></div>
+
+    <!-- Net Worth & Goals -->
+    <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px" data-widget="planning">
+      <div class="chart-card">
+        <div class="chart-card-title"><span>💰 Net Worth</span><button class="mini-btn" onclick="openCashModal()">💵 Manage Cash</button></div>
+        <div id="networth-widget"></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-card-title"><span>🎯 Goals</span><button class="mini-btn" onclick="openGoalModal()">+ Goal</button></div>
+        <div id="goals-widget"></div>
+      </div>
+    </div>
 
     <!-- Portfolio Performance Chart -->
     <div class="chart-card" style="margin-bottom:18px" data-widget="perf">
@@ -1442,6 +1459,47 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeInstModal()">Cancel</button>
       <button class="btn-primary" onclick="submitInstallment()">Add Installment</button>
+    </div>
+  </div>
+</div>
+
+<!-- CASH MODAL -->
+<div class="modal-overlay" id="cash-modal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-title">💵 Cash Balance</div>
+    <div style="background:var(--surface2);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:var(--muted)">Current cash balance</span>
+      <span id="cash-balance-display" style="font-size:20px;font-weight:800"></span>
+    </div>
+    <div class="type-toggle" style="margin-bottom:12px">
+      <button class="type-btn active-buy" id="cash-btn-deposit" onclick="setCashType('deposit')">＋ Deposit</button>
+      <button class="type-btn" id="cash-btn-withdraw" onclick="setCashType('withdraw')">－ Withdraw</button>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Date *</label><input id="cash-date" type="date"/></div>
+      <div class="form-group"><label>Amount (৳) *</label><input id="cash-amount" type="number" step="any" min="0" placeholder="0.00"/></div>
+    </div>
+    <div class="form-group"><label>Note</label><input id="cash-note" placeholder="e.g. Salary transfer to broker"/></div>
+    <button class="btn-primary" style="width:100%;margin-bottom:14px" onclick="submitCash()">Add Entry</button>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600">History</div>
+    <div id="cash-history" style="max-height:200px;overflow-y:auto"></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeCashModal()">Close</button></div>
+  </div>
+</div>
+
+<!-- GOAL MODAL -->
+<div class="modal-overlay" id="goal-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title" id="goal-modal-title">🎯 New Goal</div>
+    <div class="form-group"><label>Goal Name *</label><input id="goal-name" placeholder="e.g. ৳10 Lakh portfolio"/></div>
+    <div class="form-row">
+      <div class="form-group"><label>Target Amount (৳) *</label><input id="goal-target" type="number" step="any" min="1" placeholder="1000000"/></div>
+      <div class="form-group"><label>Target Date</label><input id="goal-date" type="date"/></div>
+    </div>
+    <div class="form-group"><label>Note</label><input id="goal-note" placeholder="Optional"/></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeGoalModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitGoal()">Save Goal</button>
     </div>
   </div>
 </div>
@@ -2653,6 +2711,7 @@ const DASH_WIDGETS=[
   {id:'monthly',label:'Monthly Investment'},
   {id:'allocations',label:'Allocation Pies'},
   {id:'holdings',label:'Holdings Tables'},
+  {id:'planning',label:'Net Worth & Goals'},
   {id:'performers',label:'Performers & Market'},
   {id:'health',label:'Health & Alerts'},
 ];
@@ -2678,6 +2737,153 @@ function applyWidgetVisibility(){
   document.querySelectorAll('#page-dashboard [data-widget]').forEach(el=>{
     el.classList.toggle('widget-hidden',hidden.includes(el.dataset.widget));
   });
+}
+
+// ─── CASH & NET WORTH ────────────────────────────────────────────────────────
+function cashBalance(){ return (state.cashLedger||[]).reduce((s,e)=>s+(e.type==='deposit'?e.amount:-e.amount),0); }
+function getNetWorth(){
+  let shares=0; getSymbols().forEach(sym=>{ shares+=shareMarketValue(sym); });
+  let sip=0; (state.sips||[]).forEach(s=>{ const st=sipStats(s); sip+=(st.value!==null?st.value:st.invested); });
+  const cash=cashBalance();
+  return {cash,shares,sip,total:cash+shares+sip};
+}
+function renderNetWorth(){
+  const el=document.getElementById('networth-widget'); if(!el)return;
+  const nw=getNetWorth();
+  const row=(lbl,val)=>`<div class="nw-row"><span style="color:var(--muted)">${lbl}</span><span style="font-weight:600">${fmt(val)}</span></div>`;
+  el.innerHTML=`
+    <div style="font-size:25px;font-weight:800;margin-bottom:4px">${fmt(nw.total)}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Total net worth · cash + shares + SIP</div>
+    ${row('💵 Cash',nw.cash)}
+    ${row('📈 Shares (market value)',nw.shares)}
+    ${row('🔁 SIP / Mutual funds',nw.sip)}`;
+}
+let cashType='deposit';
+function openCashModal(){
+  cashType='deposit'; setCashType('deposit');
+  document.getElementById('cash-date').value=new Date().toISOString().split('T')[0];
+  document.getElementById('cash-amount').value='';
+  document.getElementById('cash-note').value='';
+  renderCashHistory();
+  document.getElementById('cash-balance-display').textContent=fmt(cashBalance());
+  document.getElementById('cash-modal').classList.add('open');
+}
+function closeCashModal(){ document.getElementById('cash-modal').classList.remove('open'); }
+function setCashType(t){
+  cashType=t;
+  document.getElementById('cash-btn-deposit').className='type-btn'+(t==='deposit'?' active-buy':'');
+  document.getElementById('cash-btn-withdraw').className='type-btn'+(t==='withdraw'?' active-sell':'');
+}
+function submitCash(){
+  const date=document.getElementById('cash-date').value;
+  const amount=parseFloat(document.getElementById('cash-amount').value);
+  const note=document.getElementById('cash-note').value.trim();
+  if(!date) return toast('Pick a date','error');
+  if(!amount||amount<=0) return toast('Enter a valid amount','error');
+  state.cashLedger=state.cashLedger||[];
+  state.cashLedger.push({id:'c_'+Date.now(),date,type:cashType,amount,note});
+  save();
+  document.getElementById('cash-amount').value=''; document.getElementById('cash-note').value='';
+  document.getElementById('cash-balance-display').textContent=fmt(cashBalance());
+  renderCashHistory(); if(currentTab==='dashboard') renderDashboard();
+  toast(`${cashType==='deposit'?'Deposited':'Withdrew'} ${fmt(amount)}`,'success');
+}
+function deleteCashEntry(id){
+  state.cashLedger=(state.cashLedger||[]).filter(e=>e.id!==id);
+  save(); document.getElementById('cash-balance-display').textContent=fmt(cashBalance());
+  renderCashHistory(); if(currentTab==='dashboard') renderDashboard();
+}
+function renderCashHistory(){
+  const el=document.getElementById('cash-history');
+  const list=[...(state.cashLedger||[])].sort((a,b)=>b.date.localeCompare(a.date));
+  if(!list.length){ el.innerHTML='<div style="color:var(--muted);font-size:12px;padding:8px 0">No cash entries yet.</div>'; return; }
+  el.innerHTML=list.map(e=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
+    <div><span style="color:var(--${e.type==='deposit'?'green':'red'});font-weight:700">${e.type==='deposit'?'＋':'－'} ${fmt(e.amount)}</span>
+      <span style="color:var(--muted);font-size:11px;margin-left:8px">${fmtDate(e.date)}${e.note?' · '+e.note:''}</span></div>
+    <button onclick="deleteCashEntry('${e.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px">✕</button>
+  </div>`).join('');
+}
+
+// ─── GOALS ───────────────────────────────────────────────────────────────────
+let editingGoalId=null;
+function renderGoals(){
+  const el=document.getElementById('goals-widget'); if(!el)return;
+  const goals=state.goals||[];
+  if(!goals.length){ el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:18px 0;text-align:center">No goals yet. Click “+ Goal” to set a target and track progress.</div>'; return; }
+  const nw=getNetWorth().total;
+  const mi=getMonthlyInvestments(); const ms=Object.keys(mi);
+  const rate=ms.length?ms.reduce((s,m)=>s+mi[m].shares+mi[m].sip,0)/ms.length:0;
+  el.innerHTML=goals.map(g=>{
+    const pct=g.target>0?Math.min(100,nw/g.target*100):0;
+    const remaining=Math.max(0,g.target-nw);
+    const reached=nw>=g.target;
+    let proj='';
+    if(reached){ proj='<span style="color:var(--green);font-weight:700">✓ Reached!</span>'; }
+    else if(rate>0){ const mo=Math.ceil(remaining/rate); proj=`~${mo} mo at ${fmt(rate)}/mo`; }
+    else { proj='Set up investments to project'; }
+    let eta='';
+    if(g.targetDate&&!reached){
+      const mLeft=Math.max(0,Math.round((new Date(g.targetDate)-Date.now())/2629800000));
+      const needed=mLeft>0?remaining/mLeft:remaining;
+      eta=` · target ${fmtDate(g.targetDate)}${mLeft>0?` (need ${fmt(needed)}/mo)`:''}`;
+    }
+    return`<div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline">
+        <span style="font-weight:600;font-size:13px">${g.name}</span>
+        <span style="display:flex;gap:6px;align-items:center">
+          <span style="font-size:12px;color:var(--muted)">${fmt(nw)} / ${fmt(g.target)}</span>
+          <button onclick="editGoal('${g.id}')" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--muted)">✏️</button>
+          <button onclick="deleteGoal('${g.id}')" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--red)">🗑️</button>
+        </span>
+      </div>
+      <div class="goal-bar-track"><div class="goal-bar-fill" style="width:${pct.toFixed(1)}%"></div></div>
+      <div style="font-size:11px;color:var(--muted)">${pct.toFixed(1)}% · ${proj}${eta}</div>
+    </div>`;
+  }).join('');
+}
+function openGoalModal(){
+  editingGoalId=null;
+  document.getElementById('goal-modal-title').textContent='🎯 New Goal';
+  document.getElementById('goal-name').value='';
+  document.getElementById('goal-target').value='';
+  document.getElementById('goal-date').value='';
+  document.getElementById('goal-note').value='';
+  document.getElementById('goal-modal').classList.add('open');
+}
+function closeGoalModal(){ document.getElementById('goal-modal').classList.remove('open'); }
+function editGoal(id){
+  const g=(state.goals||[]).find(x=>x.id===id); if(!g)return;
+  editingGoalId=id;
+  document.getElementById('goal-modal-title').textContent='🎯 Edit Goal';
+  document.getElementById('goal-name').value=g.name;
+  document.getElementById('goal-target').value=g.target;
+  document.getElementById('goal-date').value=g.targetDate||'';
+  document.getElementById('goal-note').value=g.note||'';
+  document.getElementById('goal-modal').classList.add('open');
+}
+function submitGoal(){
+  const name=document.getElementById('goal-name').value.trim();
+  const target=parseFloat(document.getElementById('goal-target').value);
+  const targetDate=document.getElementById('goal-date').value;
+  const note=document.getElementById('goal-note').value.trim();
+  if(!name) return toast('Enter a goal name','error');
+  if(!target||target<=0) return toast('Enter a valid target amount','error');
+  state.goals=state.goals||[];
+  if(editingGoalId){
+    const g=state.goals.find(x=>x.id===editingGoalId);
+    if(g){ g.name=name; g.target=target; g.targetDate=targetDate; g.note=note; }
+    toast('Goal updated','success');
+  } else {
+    state.goals.push({id:'g_'+Date.now(),name,target,targetDate,note});
+    toast('Goal added','success');
+  }
+  save(); closeGoalModal(); if(currentTab==='dashboard') renderDashboard();
+}
+function deleteGoal(id){
+  const g=(state.goals||[]).find(x=>x.id===id); if(!g)return;
+  if(!confirm(`Delete goal "${g.name}"?`)) return;
+  state.goals=state.goals.filter(x=>x.id!==id);
+  save(); if(currentTab==='dashboard') renderDashboard(); toast('Goal deleted','success');
 }
 
 // ─── RENDER ───────────────────────────────────────────────────────────────────
@@ -3021,6 +3227,8 @@ function renderDashboard(){
   renderMonthlyInvest();
   renderShareAllocation();
   renderAssetAllocation();
+  renderNetWorth();
+  renderGoals();
   applyWidgetVisibility();
 }
 
@@ -5125,6 +5333,8 @@ document.getElementById('div-modal').addEventListener('click',e=>{if(e.target===
 document.getElementById('alert-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAlertModal();});
 document.getElementById('split-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)document.getElementById('split-modal').classList.remove('open');});
 document.getElementById('dsex-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
+document.getElementById('cash-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCashModal();});
+document.getElementById('goal-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeGoalModal();});
 document.getElementById('csv-import-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
 document.getElementById('portfolio-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
 initPortfolios();
