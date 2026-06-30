@@ -83,6 +83,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .ret-mini-val.green{color:var(--green)}
 .ret-mini-val.red{color:var(--red)}
 .ret-mini-sub{font-size:10px;color:var(--muted);margin-top:2px}
+.widget-hidden{display:none!important}
 
 /* ── SECTION HEADER ── */
 .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -688,11 +689,15 @@ tbody td{padding:11px 14px;vertical-align:middle}
 
   <!-- ══ DASHBOARD ══ -->
   <div id="page-dashboard" class="page active">
+    <div class="customize-wrap" style="display:flex;justify-content:flex-end;margin-bottom:10px;position:relative">
+      <button class="btn-sync" style="font-size:12px;padding:5px 12px" onclick="toggleCustomizePanel()">⚙️ Customize</button>
+      <div id="customize-panel" class="theme-menu" style="right:0;top:38px;min-width:230px"></div>
+    </div>
     <div class="summary-grid" id="summary-cards"></div>
     <div id="returns-detail" class="returns-detail"></div>
 
     <!-- Portfolio Performance Chart -->
-    <div class="chart-card" style="margin-bottom:18px">
+    <div class="chart-card" style="margin-bottom:18px" data-widget="perf">
       <div class="chart-card-title">
         <span>📈 Portfolio Performance</span>
         <div style="display:flex;gap:4px" id="perf-range-btns">
@@ -707,19 +712,19 @@ tbody td{padding:11px 14px;vertical-align:middle}
     </div>
 
     <!-- Contribution Analysis -->
-    <div class="chart-card" style="margin-bottom:18px">
+    <div class="chart-card" style="margin-bottom:18px" data-widget="contributors">
       <div class="chart-card-title">🏅 Top Contributors</div>
       <div id="contribution-chart"></div>
     </div>
 
     <!-- Monthly Investments (Shares + SIP) -->
-    <div class="chart-card" style="margin-bottom:18px">
+    <div class="chart-card" style="margin-bottom:18px" data-widget="monthly">
       <div class="chart-card-title">📆 Monthly Investment — Shares + SIP</div>
       <div id="monthly-invest"></div>
     </div>
 
     <!-- Row: all three allocation donuts -->
-    <div class="dash-donuts" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:18px">
+    <div class="dash-donuts" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin-bottom:18px" data-widget="allocations">
       <div class="chart-card">
         <div class="chart-card-title">🥧 Share Allocation</div>
         <div class="chart-inner" id="share-alloc-chart"></div>
@@ -735,7 +740,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
     </div>
 
     <!-- Row: Holdings tables -->
-    <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
+    <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px" data-widget="holdings">
       <div class="chart-card">
         <div class="section-title" style="margin-bottom:10px">Trading Holdings</div>
         <div class="table-wrap" id="dash-trading-table"></div>
@@ -747,7 +752,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
     </div>
 
     <!-- Row: Top Performers | Recent Activity | Market + Win Rate -->
-    <div class="dash-row dash-row-3" style="margin-bottom:18px">
+    <div class="dash-row dash-row-3" style="margin-bottom:18px" data-widget="performers">
       <div class="chart-card">
         <div class="chart-card-title">🏆 Top Performers</div>
         <div id="top-performers"></div>
@@ -769,7 +774,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
     </div>
 
     <!-- Row: Health Score | Monthly P&L | Smart Alerts -->
-    <div class="dash-row dash-row-3" style="margin-bottom:18px">
+    <div class="dash-row dash-row-3" style="margin-bottom:18px" data-widget="health">
       <div class="chart-card">
         <div class="chart-card-title">💡 Portfolio Health</div>
         <div id="health-widget"></div>
@@ -1497,6 +1502,7 @@ document.addEventListener('click', e=>{
   if (!e.target.closest('.theme-wrap')) document.getElementById('theme-menu').classList.remove('open');
   if (!e.target.closest('#data-wrap')) document.getElementById('data-menu').classList.remove('open');
   if (!e.target.closest('.portfolio-wrap')) document.getElementById('portfolio-menu').classList.remove('open');
+  if (!e.target.closest('.customize-wrap')) { const cp=document.getElementById('customize-panel'); if(cp) cp.classList.remove('open'); }
 });
 // ─── PORTFOLIO HEALTH SCORE ──────────────────────────────────────────────────
 function calcHealthScore() {
@@ -2640,6 +2646,40 @@ function toggleReturnsDetail(){
   if(lbl) lbl.textContent=(state.uiPrefs.returnsOpen?'▴':'▾')+' details';
 }
 
+// ─── CUSTOMIZE DASHBOARD ─────────────────────────────────────────────────────
+const DASH_WIDGETS=[
+  {id:'perf',label:'Portfolio Performance'},
+  {id:'contributors',label:'Top Contributors'},
+  {id:'monthly',label:'Monthly Investment'},
+  {id:'allocations',label:'Allocation Pies'},
+  {id:'holdings',label:'Holdings Tables'},
+  {id:'performers',label:'Performers & Market'},
+  {id:'health',label:'Health & Alerts'},
+];
+function toggleCustomizePanel(){
+  const p=document.getElementById('customize-panel');
+  if(p.classList.toggle('open')) renderCustomizePanel();
+}
+function renderCustomizePanel(){
+  const hidden=(state.uiPrefs||{}).hiddenWidgets||[];
+  document.getElementById('customize-panel').innerHTML=
+    '<div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;padding:4px 10px 8px;font-weight:600">Show / hide widgets</div>'+
+    DASH_WIDGETS.map(w=>`<label class="theme-opt" style="cursor:pointer;font-size:13px"><input type="checkbox" ${hidden.includes(w.id)?'':'checked'} onchange="toggleWidget('${w.id}',this.checked)" style="margin-right:9px"/>${w.label}</label>`).join('');
+}
+function toggleWidget(id,show){
+  state.uiPrefs=state.uiPrefs||{};
+  let h=state.uiPrefs.hiddenWidgets||[];
+  if(show) h=h.filter(x=>x!==id); else if(!h.includes(id)) h.push(id);
+  state.uiPrefs.hiddenWidgets=h;
+  save(); applyWidgetVisibility();
+}
+function applyWidgetVisibility(){
+  const hidden=(state.uiPrefs||{}).hiddenWidgets||[];
+  document.querySelectorAll('#page-dashboard [data-widget]').forEach(el=>{
+    el.classList.toggle('widget-hidden',hidden.includes(el.dataset.widget));
+  });
+}
+
 // ─── RENDER ───────────────────────────────────────────────────────────────────
 function render(){
   if(currentTab==='dashboard')  renderDashboard();
@@ -2981,6 +3021,7 @@ function renderDashboard(){
   renderMonthlyInvest();
   renderShareAllocation();
   renderAssetAllocation();
+  applyWidgetVisibility();
 }
 
 // Current market value of each held stock (incl. bonus shares; falls back to cost)
