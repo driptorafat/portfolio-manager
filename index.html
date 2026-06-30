@@ -74,6 +74,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .card-value.green{color:var(--green)}
 .card-value.red{color:var(--red)}
 .card-sub{font-size:11px;color:var(--muted);margin-top:4px}
+.card-clickable{transition:border-color .15s}
+.card-clickable:hover{border-color:var(--accent2)}
+.returns-detail{display:none;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin:-8px 0 22px;padding:14px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:12px}
+.returns-detail.open{display:grid}
+.ret-mini-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.ret-mini-val{font-size:17px;font-weight:700;margin-top:3px}
+.ret-mini-val.green{color:var(--green)}
+.ret-mini-val.red{color:var(--red)}
+.ret-mini-sub{font-size:10px;color:var(--muted);margin-top:2px}
 
 /* ── SECTION HEADER ── */
 .section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
@@ -680,6 +689,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
   <!-- ══ DASHBOARD ══ -->
   <div id="page-dashboard" class="page active">
     <div class="summary-grid" id="summary-cards"></div>
+    <div id="returns-detail" class="returns-detail"></div>
 
     <!-- Portfolio Performance Chart -->
     <div class="chart-card" style="margin-bottom:18px">
@@ -697,15 +707,9 @@ tbody td{padding:11px 14px;vertical-align:middle}
     </div>
 
     <!-- Contribution Analysis -->
-    <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px">
-      <div class="chart-card">
-        <div class="chart-card-title">🏅 Top Contributors</div>
-        <div id="contribution-chart"></div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-card-title">💼 Sector P&amp;L</div>
-        <div id="sector-pnl-chart"></div>
-      </div>
+    <div class="chart-card" style="margin-bottom:18px">
+      <div class="chart-card-title">🏅 Top Contributors</div>
+      <div id="contribution-chart"></div>
     </div>
 
     <!-- Monthly Investments (Shares + SIP) -->
@@ -2196,7 +2200,7 @@ const FALLBACK_COLORS=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#8b5cf
 function getSectorColor(s,i){ return SECTOR_COLORS[s]||FALLBACK_COLORS[i%FALLBACK_COLORS.length]; }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{}, prevPrices:{}, sips:[] };
+let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{}, prevPrices:{}, sips:[], cashLedger:[], goals:[], lastBackupAt:null, assetTargets:{}, uiPrefs:{returnsOpen:false,hiddenWidgets:[]} };
 // Cloud sync globals
 let _fbAuth=null,_fbDb=null,_fbUser=null,_saveTimer=null,_cloudLoading=false;
 let formType='buy', formPurpose='investing', editingId=null;
@@ -2605,18 +2609,35 @@ function getTopPerformers(){
   return{best:gainers.slice(0,3), worst:losers.slice(0,3), hasHoldings:list.length>0};
 }
 
-// ─── SECTOR PIE ──────────────────────────────────────────────────────────────
+// ─── SECTOR PIE (weight by cost + folded-in P&L) ─────────────────────────────
 function buildSectorData(){
   const map={};
   getSymbols().forEach(sym=>{
-    const{heldCost:ic}=calcPnL(sym,'investing');
-    const{heldCost:tc}=calcPnL(sym,'trading');
-    const cost=ic+tc; if(cost<=0)return;
+    const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
+    const cost=inv.heldCost+trd.heldCost; if(cost<=0)return;
+    const heldQty=inv.heldQty+trd.heldQty;
+    const ds=getDivStats(sym), cp=state.currentPrices[sym]||0;
+    const unreal=cp&&heldQty>0?heldQty*cp-cost:0;
+    const pnl=unreal+(inv.realized+trd.realized)+ds.totalCashAmount+(cp?ds.totalBonusShares*cp:0);
     const sec=state.sectorMap[sym]||'Unknown';
-    map[sec]=(map[sec]||0)+cost;
+    map[sec]=map[sec]||{value:0,pnl:0};
+    map[sec].value+=cost; map[sec].pnl+=pnl;
   });
-  return Object.entries(map).sort((a,b)=>b[1]-a[1])
-    .map(([sector,value],i)=>({sector,value,color:getSectorColor(sector,i)}));
+  return Object.entries(map).sort((a,b)=>b[1].value-a[1].value)
+    .map(([sector,o],i)=>({sector,value:o.value,color:getSectorColor(sector,i),
+      extra:(o.pnl>=0?'+':'')+(o.pnl/1000).toFixed(1)+'K',
+      extraColor:o.pnl>=0?'var(--green)':'var(--red)'}));
+}
+
+function toggleReturnsDetail(){
+  state.uiPrefs=state.uiPrefs||{};
+  state.uiPrefs.returnsOpen=!state.uiPrefs.returnsOpen;
+  save();
+  const el=document.getElementById('returns-detail');
+  if(el) el.classList.toggle('open',state.uiPrefs.returnsOpen);
+  // update the chevron label without a full re-render
+  const lbl=document.querySelector('#summary-cards .card-clickable .card-label span');
+  if(lbl) lbl.textContent=(state.uiPrefs.returnsOpen?'▴':'▾')+' details';
 }
 
 // ─── RENDER ───────────────────────────────────────────────────────────────────
@@ -2696,33 +2717,31 @@ function renderDashboard(){
     dsexCardHtml=`<div class="card"><div class="card-icon">📊</div><div class="card-label">vs DSEX Benchmark</div><div class="card-value" style="font-size:13px;color:var(--muted)">Sync to compare</div><div class="card-sub">Press "Sync Latest Price" to fetch DSEX, or enter it manually below the chart</div></div>`;
   }
 
+  const retOpen=(state.uiPrefs||{}).returnsOpen;
+  const totalReturnCard=`<div class="card card-clickable" onclick="toggleReturnsDetail()" style="cursor:pointer">
+    <div class="card-icon">🏆</div>
+    <div class="card-label">Total Return <span style="font-size:10px;color:var(--muted)">${retOpen?'▴':'▾'} details</span></div>
+    <div class="card-value ${grandTotal>=0?'green':'red'}">${fmtPnl(grandTotal)}${grandRetPct!==null?' <span style="font-size:14px;opacity:.8">('+grandRetPct.toFixed(2)+'%)</span>':''}</div>
+    <div class="card-sub">P&L + dividends + bonus value</div>
+  </div>`;
   document.getElementById('summary-cards').innerHTML=
     card('Portfolio Value',fmt(totPortVal),'','Current holdings value','💼')+
     card('Total Invested',fmt(totInv),'','Open positions cost','💰')+
-    card('Realized P&L',fmtPnl(totReal),totReal>=0?'green':'red','Closed trades','📊')+
-    card('Unrealized P&L',fmtPnl(totUnreal),totUnreal>=0?'green':'red','Open positions','📈')+
-    card('Total P&L',fmtPnl(totalPnL),totalPnL>=0?'green':'red','Realized + Unrealized','🎯')+
+    totalReturnCard+
     card('Holdings',String(invHeld+trdHeld),'',`${invHeld} investing · ${trdHeld} trading`,'🗂️')+
     card('Cash Dividend',fmt(totCashDiv),'green','Total cash dividend income','💵')+
     card('Bonus Shares',totBonusDiv?String(totBonusDiv)+' shares':'0 shares',totBonusValue>0?'green':'',totBonusValue>0?'Market value: '+fmt(totBonusValue):'No price data yet','🎁')+
-    card('Total Return',
-      fmtPnl(grandTotal)+(grandRetPct!==null?' <span style="font-size:14px;opacity:.8">('+grandRetPct.toFixed(2)+'%)</span>':''),
-      grandTotal>=0?'green':'red',
-      'P&L + Dividends + Bonus value'+(totBonusValue>0?' · Bonus: '+fmt(totBonusValue):''),
-      '🏆')+
-    card("Day's Gain",
-      dayHas?fmtPnl(dayGain)+(dayPct!==null?' <span style="font-size:14px;opacity:.8">('+(dayPct>=0?'+':'')+dayPct.toFixed(2)+'%)</span>':''):'—',
-      dayHas?(dayGain>=0?'green':'red'):'',
-      dayHas?'Today vs previous sync':'Sync on two different days to track','☀️')+
-    card('XIRR',
-      xirr!==null?(xirr>=0?'+':'')+xirr.toFixed(2)+'%<span style="font-size:13px;opacity:.8">/yr</span>':'—',
-      xirr!==null?(xirr>=0?'green':'red'):'',
-      xirr!==null?'Money-weighted annual return':'Needs 1+ month of history','⚡')+
-    card('CAGR',
-      cagr!==null?(cagr>=0?'+':'')+cagr.toFixed(2)+'%<span style="font-size:13px;opacity:.8">/yr</span>':'—',
-      cagr!==null?(cagr>=0?'green':'red'):'',
-      cagr!==null?`Annualized over ${pYrs.toFixed(1)} yr${pYrs>=2?'s':''}`:'Needs 1+ month of history','📐')+
     dsexCardHtml;
+
+  // Returns detail (expandable) — the secondary metrics live here
+  const mini=(lbl,val,cls,sub)=>`<div class="ret-mini"><div class="ret-mini-lbl">${lbl}</div><div class="ret-mini-val ${cls||''}">${val}</div><div class="ret-mini-sub">${sub||''}</div></div>`;
+  document.getElementById('returns-detail').innerHTML=
+    mini('Realized P&L',fmtPnl(totReal),totReal>=0?'green':'red','Closed trades')+
+    mini('Unrealized P&L',fmtPnl(totUnreal),totUnreal>=0?'green':'red','Open positions vs cost')+
+    mini("Day's Gain",dayHas?fmtPnl(dayGain)+(dayPct!==null?' ('+(dayPct>=0?'+':'')+dayPct.toFixed(2)+'%)':''):'—',dayHas?(dayGain>=0?'green':'red'):'','Today vs previous sync')+
+    mini('XIRR',xirr!==null?(xirr>=0?'+':'')+xirr.toFixed(2)+'%/yr':'—',xirr!==null?(xirr>=0?'green':'red'):'','Money-weighted annual')+
+    mini('CAGR',cagr!==null?(cagr>=0?'+':'')+cagr.toFixed(2)+'%/yr':'—',cagr!==null?(cagr>=0?'green':'red'):'',cagr!==null?`Annualized · ${pYrs.toFixed(1)}yr`:'Needs 1+ month');
+  document.getElementById('returns-detail').classList.toggle('open',!!retOpen);
 
   // Market status
   const ms=getDSEStatus();
@@ -2959,7 +2978,6 @@ function renderDashboard(){
 
   // ── Contribution Analysis ──
   renderContribution();
-  renderSectorPnL();
   renderMonthlyInvest();
   renderShareAllocation();
   renderAssetAllocation();
@@ -3116,7 +3134,8 @@ function renderDonut(data,opts){
     <div class="legend-item">
       <div class="legend-dot" style="background:${d.color}"></div>
       <span class="legend-name">${d.sector}</span>
-      <span class="legend-pct">${(d.value/total*100).toFixed(1)}%</span>
+      ${d.extra?`<span class="legend-extra" style="color:${d.extraColor||'var(--muted)'};font-size:11px;margin-left:auto;margin-right:8px;font-weight:600">${d.extra}</span>`:''}
+      <span class="legend-pct"${d.extra?' style="margin-left:0"':''}>${(d.value/total*100).toFixed(1)}%</span>
     </div>`).join('');
   return`<svg width="220" height="220" viewBox="0 0 220 220">${paths}
     <text x="${cx}" y="${cy-7}" text-anchor="middle" fill="#e2e8f0" font-size="14" font-weight="700">৳${lbl}</text>
@@ -3168,47 +3187,6 @@ function renderContribution(){
   el.innerHTML=`<svg viewBox="0 0 800 ${H}" style="width:100%;height:${H}px">${rows}</svg>`;
 }
 
-function renderSectorPnL(){
-  const el=document.getElementById('sector-pnl-chart');
-  if(!el)return;
-  const map={};
-  let totCost=0;
-  getSymbols().forEach(sym=>{
-    const inv=calcPnL(sym,'investing'), trd=calcPnL(sym,'trading');
-    const ds=getDivStats(sym);
-    const cp=state.currentPrices[sym]||0;
-    const heldQty=inv.heldQty+trd.heldQty;
-    const heldCost=inv.heldCost+trd.heldCost;
-    const realized=inv.realized+trd.realized;
-    const unrealized=cp&&heldQty>0?(heldQty+ds.totalBonusShares)*cp-heldCost:0;
-    const total=realized+unrealized+ds.totalCashAmount;
-    if(heldCost<=0&&realized===0&&ds.totalCashAmount===0)return;
-    const sec=state.sectorMap[sym]||'Unknown';
-    map[sec]=map[sec]||{v:0,cost:0};
-    map[sec].v+=total; map[sec].cost+=heldCost;
-    totCost+=heldCost;
-  });
-  const items=Object.entries(map).map(([sec,o])=>({sec,v:o.v,cost:o.cost})).sort((a,b)=>b.v-a.v);
-  if(!items.length){el.innerHTML='<div style="text-align:center;color:var(--muted);padding:30px;font-size:13px">Add holdings with sectors to see sector P&L</div>';return;}
-  const display=items.slice(0,8);
-  const maxAbs=Math.max(...display.map(i=>Math.abs(i.v)),1);
-  const rowH=28,pad=8,labelW=130,valW=90,barAreaW=800-labelW-valW-pad*3;
-  const H=display.length*rowH+pad*2;
-  const rows=display.map((item,i)=>{
-    const y=pad+i*rowH;
-    const barW=Math.max(2,(Math.abs(item.v)/maxAbs)*barAreaW*0.92);
-    const x0=labelW+pad;
-    const color=item.v>=0?'#22c55e':'#ef4444';
-    const retPct=item.cost>0?item.v/item.cost*100:null;
-    const valStr=(item.v>=0?'+':'')+((item.v/1000).toFixed(1))+'K';
-    const lbl=item.sec.length>18?item.sec.slice(0,17)+'…':item.sec;
-    return`<text x="${labelW-4}" y="${y+rowH*0.65}" text-anchor="end" fill="var(--text)" font-size="11" font-family="system-ui" font-weight="600">${lbl}</text>
-           <rect x="${x0}" y="${y+4}" width="${barW.toFixed(1)}" height="${rowH-10}" fill="${color}" opacity="0.85" rx="3"/>
-           <text x="${x0+barW+6}" y="${y+rowH*0.65}" fill="${color}" font-size="11" font-family="system-ui" font-weight="600">${valStr}</text>
-           <text x="${800-pad}" y="${y+rowH*0.65}" text-anchor="end" fill="#64748b" font-size="10" font-family="system-ui">${retPct!==null?(retPct>=0?'+':'')+retPct.toFixed(1)+'%':''}</text>`;
-  }).join('');
-  el.innerHTML=`<svg viewBox="0 0 800 ${H}" style="width:100%;height:${H}px">${rows}</svg>`;
-}
 
 function renderTrading(){
   const search=(document.getElementById('trade-search')?.value||'').toUpperCase();
@@ -3980,7 +3958,7 @@ function clearAllData() {
   const pid = getActivePortfolioId();
   const name = (getPortfolioList().find(p=>p.id===pid)||{}).name || 'this portfolio';
   if(!confirm(`Delete ALL data for "${name}" permanently?\n\nThis cannot be undone. Export a backup first if needed.`)) return;
-  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[]};
+  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[],cashLedger:[],goals:[],lastBackupAt:null,assetTargets:{},uiPrefs:{returnsOpen:false,hiddenWidgets:[]}};
   save(); render();
   document.getElementById('sync-status').textContent='';
   toast('All data cleared','success');
@@ -4764,7 +4742,7 @@ function doSwitchPortfolio(pid) {
   if (pid === getActivePortfolioId()) return;
   save();
   localStorage.setItem('pm_active', pid);
-  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[]};
+  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[],cashLedger:[],goals:[],lastBackupAt:null,assetTargets:{},uiPrefs:{returnsOpen:false,hiddenWidgets:[]}};
   load();
   updatePortfolioSwitcher();
   render();
