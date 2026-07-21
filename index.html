@@ -1471,6 +1471,57 @@ tbody td{padding:11px 14px;vertical-align:middle}
   </div>
 </div>
 
+<!-- SIP PAYOUT / DIVIDEND MODAL -->
+<div class="modal-overlay" id="payout-modal">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title">💵 Record Dividend / Payout</div>
+    <div id="payout-fund-label" style="font-size:13px;color:var(--accent2);font-weight:600;margin-bottom:6px"></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px">Bonus units are added free — they raise your unit count without changing what you invested.</div>
+    <div class="form-group">
+      <label>Date *</label>
+      <input id="payout-date" type="date"/>
+    </div>
+
+    <div style="background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--green);margin-bottom:10px">💵 Cash Dividend <span style="font-weight:400;color:var(--muted);font-size:11px">(leave blank if none)</span></div>
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:8px">
+          <label>Gross Cash (৳)</label>
+          <input id="payout-gross" type="number" step="any" min="0" placeholder="0.00" oninput="calcPayout()"/>
+        </div>
+        <div class="form-group" style="margin-bottom:8px">
+          <label>AIT Deducted (৳)</label>
+          <input id="payout-ait" type="number" step="any" min="0" placeholder="0.00" oninput="calcPayout()"/>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Net Cash Received (৳) — auto</label>
+        <input id="payout-net" readonly placeholder="0.00" style="color:var(--green);font-weight:700;font-size:15px;background:var(--surface2)"/>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Gross − AIT. AIT is a prepaid tax credit, tracked for your Tax Report.</div>
+      </div>
+    </div>
+
+    <div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:10px;padding:14px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--accent2);margin-bottom:10px">🎁 Unit / Bonus Dividend <span style="font-weight:400;color:var(--muted);font-size:11px">(leave blank if none)</span></div>
+      <div class="form-group" style="margin-bottom:0">
+        <label>Units Received</label>
+        <input id="payout-units" type="number" step="any" min="0" placeholder="e.g. 12.3456" oninput="calcPayout()"/>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px">Fractional units are fine. These cost you nothing.</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label>Note</label>
+      <input id="payout-note" placeholder="e.g. FY2025-26 annual dividend"/>
+    </div>
+    <div class="calc-result-box" id="payout-result"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closePayoutModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitPayout()">Record Payout</button>
+    </div>
+  </div>
+</div>
+
 <!-- CASH MODAL -->
 <div class="modal-overlay" id="cash-modal">
   <div class="modal" style="max-width:500px">
@@ -4227,6 +4278,10 @@ function runSelfChecks(){
     (state.sips||[]).forEach(sip=>(sip.installments||[]).forEach(i=>{
       if(i.nav>0&&Math.abs((i.units||0)-i.amount/i.nav)>0.01) issues.push(`SIP ${sip.fundName} ${i.date}: units ≠ amount/NAV`);
     }));
+    (state.sips||[]).forEach(sip=>(sip.payouts||[]).forEach(p=>{
+      if(Math.abs((p.netCash||0)-((p.grossCash||0)-(p.ait||0)))>0.01) issues.push(`Payout ${sip.fundName} ${p.date}: net ≠ gross − AIT`);
+      if((p.ait||0)>(p.grossCash||0)) issues.push(`Payout ${sip.fundName} ${p.date}: AIT exceeds gross`);
+    }));
     const xirr=(typeof calcXIRR==='function')?calcXIRR():null;
     if(xirr!==null&&(xirr<-100||xirr>100000)) issues.push(`XIRR out of range: ${xirr}`);
     if(cashBalance()<0) issues.push(`Cash balance negative: ${cashBalance()}`);
@@ -4411,10 +4466,19 @@ function buildTaxReport(){
     const cash=d.cashAmount!=null?d.cashAmount:(d.type==='cash'?d.amount||0:0);
     if(cash<=0)return;
     const f=fiscalYearOf(d.date);
-    fy[f]=fy[f]||{cash:0,bySym:{}};
+    fy[f]=fy[f]||{cash:0,ait:0,bySym:{}};
     fy[f].cash+=cash;
     fy[f].bySym[d.symbol]=(fy[f].bySym[d.symbol]||0)+cash;
   });
+  // Mutual-fund / SIP payouts — gross counts as dividend income, AIT is tax already paid
+  (state.sips||[]).forEach(sip=>(sip.payouts||[]).forEach(p=>{
+    if((p.grossCash||0)<=0)return;
+    const f=fiscalYearOf(p.date);
+    fy[f]=fy[f]||{cash:0,ait:0,bySym:{}};
+    fy[f].cash+=p.grossCash;
+    fy[f].ait+=(p.ait||0);
+    fy[f].bySym[sip.fundName]=(fy[f].bySym[sip.fundName]||0)+p.grossCash;
+  }));
   // Realized gains per fiscal year (FIFO matched at sell date)
   const gains={};
   getSymbols().forEach(sym=>{
@@ -4436,17 +4500,18 @@ function buildTaxReport(){
   const years=[...new Set([...Object.keys(fy),...Object.keys(gains)])].sort().reverse();
   if(!years.length) return '<div style="text-align:center;padding:40px;color:var(--muted)">No dividends or closed trades yet — tax summary will appear here</div>';
   const blocks=years.map(y=>{
-    const cash=fy[y]?.cash||0, gain=gains[y]||0;
+    const cash=fy[y]?.cash||0, ait=fy[y]?.ait||0, gain=gains[y]||0;
     const taxable=Math.max(0,cash-DIVIDEND_EXEMPT);
     const symRows=fy[y]?Object.entries(fy[y].bySym).sort((a,b)=>b[1]-a[1]).map(([s,v])=>`<tr><td><b>${s}</b></td><td>${fmt(v)}</td></tr>`).join(''):'';
     return `<div style="border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px">
       <div style="font-weight:700;font-size:15px;margin-bottom:12px">FY ${y} <span style="font-size:11px;color:var(--muted);font-weight:400">(Jul ${y.split('-')[0]} – Jun ${parseInt(y.split('-')[0])+1})</span></div>
       <div class="summary-grid" style="margin-bottom:12px">
-        ${card('Dividend Income',fmt(cash),cash>0?'green':'','Gross cash dividends received','💵')}
+        ${card('Dividend Income',fmt(cash),cash>0?'green':'','Gross — shares + mutual funds','💵')}
         ${card('Taxable Dividend',taxable>0?fmt(taxable):'৳0.00',taxable>0?'red':'green',taxable>0?'Amount above ৳50,000 exemption':'Within ৳50,000 exemption','🧾')}
+        ${card('AIT Already Deducted',ait>0?fmt(ait):'৳0.00',ait>0?'green':'',ait>0?'Prepaid tax credit — claim on your return':'No withholding recorded','🧮')}
         ${card('Realized Capital Gain',fmtPnl(gain),gain>=0?'green':'red','Listed-share gains — exempt for individuals','📊')}
       </div>
-      ${symRows?`<div class="table-wrap"><table style="font-size:12px"><thead><tr><th>Symbol</th><th>Dividend Received</th></tr></thead><tbody>${symRows}</tbody></table></div>`:''}
+      ${symRows?`<div class="table-wrap"><table style="font-size:12px"><thead><tr><th>Symbol / Fund</th><th>Gross Dividend</th></tr></thead><tbody>${symRows}</tbody></table></div>`:''}
     </div>`;
   }).join('');
   return `<p style="font-size:11px;color:var(--muted);margin:14px 0">⚠️ Indicative only — based on common NBR rules for individual investors (cash dividend income above ৳50,000/year is taxable; capital gains on listed shares are exempt). Bonus shares are not taxed at receipt. Verify current-year rules with your tax advisor before filing.</p>${blocks}`;
@@ -5202,18 +5267,30 @@ async function fetchSipNav(){
 
 function sipStats(sip){
   const inst=sip.installments||[];
+  const pays=sip.payouts||[];
+  // Contributions are the only thing that counts as "invested".
   const invested=inst.reduce((s,i)=>s+(i.amount||0),0);
-  const units=inst.reduce((s,i)=>s+(i.units||0),0);
+  const instUnits=inst.reduce((s,i)=>s+(i.units||0),0);
+  // Bonus/reinvested units come free with a payout — they raise units, never cost.
+  const bonusUnits=pays.reduce((s,p)=>s+(p.units||0),0);
+  const units=instUnits+bonusUnits;
+  const cashGross=pays.reduce((s,p)=>s+(p.grossCash||0),0);
+  const ait=pays.reduce((s,p)=>s+(p.ait||0),0);
+  const cashNet=pays.reduce((s,p)=>s+(p.netCash||0),0);
   const nav=sip.nav||0;
   const value=nav>0?units*nav:null;
-  const gain=value!==null?value-invested:null;
+  // Return = what the units are worth now + cash already taken out − what you put in
+  const gain=value!==null?(value+cashNet)-invested:null;
   const retPct=value!==null&&invested>0?gain/invested*100:null;
-  return{invested,units,value,gain,retPct,count:inst.length};
+  return{invested,units,instUnits,bonusUnits,value,gain,retPct,count:inst.length,
+    cashGross,ait,cashNet,payoutCount:pays.length};
 }
 
 // Money-weighted annualized return for one SIP (bisection)
 function sipXIRR(sip){
   const flows=(sip.installments||[]).map(i=>({date:new Date(i.date),amount:-(i.amount||0)}));
+  // Cash payouts are money back in your pocket on the day they landed
+  (sip.payouts||[]).forEach(p=>{ if((p.netCash||0)>0) flows.push({date:new Date(p.date),amount:p.netCash}); });
   const st=sipStats(sip);
   if(st.value===null||st.value<=0) return null;
   flows.push({date:new Date(),amount:st.value});
@@ -5241,7 +5318,7 @@ function sipCAGR(sip){
   if(!dates.length) return null;
   const yrs=(Date.now()-Math.min(...dates))/31557600000;
   if(yrs<0.08) return null;                  // need ~1 month of history
-  const growth=st.value/st.invested;
+  const growth=(st.value+st.cashNet)/st.invested;
   if(growth<=0) return -100;
   return (Math.pow(growth,1/yrs)-1)*100;
 }
@@ -5249,14 +5326,15 @@ function sipCAGR(sip){
 function renderSIP(){
   const sips=state.sips||[];
   // Aggregate summary
-  let tInv=0,tVal=0,tValHas=false;
-  sips.forEach(sip=>{const s=sipStats(sip);tInv+=s.invested;if(s.value!==null){tVal+=s.value;tValHas=true;}});
-  const tGain=tValHas?tVal-tInv:null;
+  let tInv=0,tVal=0,tValHas=false,tCash=0,tAit=0;
+  sips.forEach(sip=>{const s=sipStats(sip);tInv+=s.invested;tCash+=s.cashNet;tAit+=s.ait;if(s.value!==null){tVal+=s.value;tValHas=true;}});
+  const tGain=tValHas?(tVal+tCash)-tInv:null;
   const tRet=tValHas&&tInv>0?tGain/tInv*100:null;
   document.getElementById('sip-summary').innerHTML=
     card('SIP Invested',fmt(tInv),'','Total contributed across SIPs','💰')+
     card('Current Value',tValHas?fmt(tVal):'—','','Units × latest NAV','💎')+
-    card('Total Gain',tGain!==null?fmtPnl(tGain):'—',tGain!==null?(tGain>=0?'green':'red'):'','Value − invested','📈')+
+    card('Dividends Received',tCash>0?fmt(tCash):'৳0.00',tCash>0?'green':'',tAit>0?'Net of '+fmt(tAit)+' AIT':'Cash payouts, net of tax','💵')+
+    card('Total Gain',tGain!==null?fmtPnl(tGain):'—',tGain!==null?(tGain>=0?'green':'red'):'','Value + dividends − invested','📈')+
     card('Return',tRet!==null?(tRet>=0?'+':'')+tRet.toFixed(2)+'%':'—',tRet!==null?(tRet>=0?'green':'red'):'','On invested capital','🎯')+
     card('Active SIPs',String(sips.length),'',sips.reduce((s,x)=>s+(x.installments||[]).length,0)+' installments logged','🔁');
 
@@ -5279,6 +5357,16 @@ function renderSIP(){
         <td>${sip.nav?fmt((i.units||0)*sip.nav):'—'}</td>
         <td><button onclick="deleteInstallment('${sip.id}','${i.id}')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:13px" title="Delete">✕</button></td>
       </tr>`).join('')||emptyRow(6,'No installments yet — click “Add Installment”.');
+    const payRows=[...(sip.payouts||[])].sort((a,b)=>b.date.localeCompare(a.date)).map(p=>`
+      <tr>
+        <td>${fmtDate(p.date)}</td>
+        <td>${p.grossCash?fmt(p.grossCash):'—'}</td>
+        <td class="pnl ${p.ait>0?'neg':'zero'}">${p.ait?'−'+fmt(p.ait):'—'}</td>
+        <td class="pnl pos"><strong>${p.netCash?fmt(p.netCash):'—'}</strong></td>
+        <td><strong>${p.units?(+p.units).toFixed(4):'—'}</strong></td>
+        <td style="font-size:11px;color:var(--muted)">${p.note||''}</td>
+        <td><button onclick="deletePayout('${sip.id}','${p.id}')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:13px" title="Delete">✕</button></td>
+      </tr>`).join('');
     return`
     <div class="chart-card" style="margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px">
@@ -5289,25 +5377,35 @@ function renderSIP(){
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn-add" style="font-size:11px;padding:5px 11px" onclick="openInstModal('${sip.id}',true)">+ Add this month (৳${(sip.amount||0).toLocaleString('en-US')})</button>
           <button class="btn-secondary" style="font-size:11px;padding:5px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer" onclick="openInstModal('${sip.id}',false)">Custom…</button>
+          <button class="btn-secondary" style="font-size:11px;padding:5px 11px;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.25);border-radius:8px;color:var(--green);cursor:pointer;font-weight:600" onclick="openPayoutModal('${sip.id}')">💵 Record Payout</button>
           <button class="btn-secondary" style="font-size:11px;padding:5px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer" onclick="editSip('${sip.id}')">✏️</button>
           <button class="btn-secondary" style="font-size:11px;padding:5px 9px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--red);cursor:pointer" onclick="deleteSip('${sip.id}')">🗑️</button>
         </div>
       </div>
       <div class="summary-grid" style="margin-bottom:14px">
         ${card('Invested',fmt(s.invested),'',s.count+' installment'+(s.count!==1?'s':''),'💵')}
-        ${card('Units',s.units.toFixed(4),'','Total units held','🧮')}
+        ${card('Units',s.units.toFixed(4),'',s.bonusUnits>0?`${s.instUnits.toFixed(4)} bought + ${s.bonusUnits.toFixed(4)} bonus`:'Total units held','🧮')}
         ${card('Value',s.value!==null?fmt(s.value):'—',s.value!==null?(s.gain>=0?'green':'red'):'',sip.nav?'At NAV ৳'+sip.nav:'Fetch NAV','💎')}
-        ${card('Gain',s.gain!==null?fmtPnl(s.gain)+(s.retPct!==null?' ('+(s.retPct>=0?'+':'')+s.retPct.toFixed(1)+'%)':''):'—',s.gain!==null?(s.gain>=0?'green':'red'):'','Unrealized','📈')}
+        ${card('Dividends',s.cashNet>0?fmt(s.cashNet):'৳0.00',s.cashNet>0?'green':'',s.ait>0?`Gross ${fmt(s.cashGross)} − AIT ${fmt(s.ait)}`:'Cash received','💵')}
+        ${card('Gain',s.gain!==null?fmtPnl(s.gain)+(s.retPct!==null?' ('+(s.retPct>=0?'+':'')+s.retPct.toFixed(1)+'%)':''):'—',s.gain!==null?(s.gain>=0?'green':'red'):'',s.cashNet>0?'Incl. dividends received':'Unrealized','📈')}
         ${card('XIRR',xirr!==null?(xirr>=0?'+':'')+xirr.toFixed(2)+'%/yr':'—',xirr!==null?(xirr>=0?'green':'red'):'','Money-weighted','⚡')}
         ${card('CAGR',cagr!==null?(cagr>=0?'+':'')+cagr.toFixed(2)+'%/yr':'—',cagr!==null?(cagr>=0?'green':'red'):'','Annualized total return','📐')}
       </div>
       ${sip.fundKey==='other'?`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;color:var(--muted)"><span>Set NAV manually:</span><input type="number" step="any" value="${sip.nav||''}" placeholder="NAV" style="width:90px;padding:4px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px" onchange="setSipNavManual('${sip.id}',this.value)"/></div>`:''}
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px">Installments</div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Date</th><th>Amount</th><th>NAV</th><th>Units</th><th>Value</th><th></th></tr></thead>
           <tbody>${instRows}</tbody>
         </table>
       </div>
+      ${payRows?`<div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin:16px 0 6px">Dividends / Payouts</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Gross Cash</th><th>AIT</th><th>Net Cash</th><th>Bonus Units</th><th>Note</th><th></th></tr></thead>
+          <tbody>${payRows}</tbody>
+        </table>
+      </div>`:''}
     </div>`;
   }).join('');
 }
@@ -5410,6 +5508,63 @@ function deleteInstallment(sipId,instId){
   sip.installments=(sip.installments||[]).filter(i=>i.id!==instId);
   save(); renderSIP(); toast('Installment removed','success');
 }
+
+// ─── SIP PAYOUTS (cash dividend + bonus units, with AIT withheld) ────────────
+let payoutSipId=null;
+function openPayoutModal(sipId){
+  const sip=(state.sips||[]).find(s=>s.id===sipId); if(!sip)return;
+  payoutSipId=sipId;
+  document.getElementById('payout-fund-label').textContent=sip.fundName;
+  document.getElementById('payout-date').value=new Date().toISOString().split('T')[0];
+  ['payout-gross','payout-ait','payout-units','payout-note'].forEach(id=>document.getElementById(id).value='');
+  calcPayout();
+  document.getElementById('payout-modal').classList.add('open');
+}
+function closePayoutModal(){ document.getElementById('payout-modal').classList.remove('open'); }
+function calcPayout(){
+  const gross=parseFloat(document.getElementById('payout-gross').value)||0;
+  const ait=parseFloat(document.getElementById('payout-ait').value)||0;
+  const units=parseFloat(document.getElementById('payout-units').value)||0;
+  const net=Math.max(0,gross-ait);
+  document.getElementById('payout-net').value=net>0?net.toFixed(2):'';
+  const sip=(state.sips||[]).find(s=>s.id===payoutSipId);
+  const nav=sip?(sip.nav||0):0;
+  const box=document.getElementById('payout-result');
+  if(gross>0||units>0){
+    const unitVal=units>0&&nav>0?units*nav:null;
+    const aitPct=gross>0&&ait>0?(ait/gross*100).toFixed(1)+'%':null;
+    box.style.display='grid';
+    box.innerHTML=
+      `<div class="calc-result-item"><div class="calc-result-lbl">Net Cash</div><div class="calc-result-val" style="color:var(--green)">${fmt(net)}</div></div>`+
+      `<div class="calc-result-item"><div class="calc-result-lbl">Bonus Units</div><div class="calc-result-val">${units>0?units.toFixed(4):'—'}</div></div>`+
+      (aitPct?`<div class="calc-result-item"><div class="calc-result-lbl">AIT Rate</div><div class="calc-result-val" style="font-size:14px">${aitPct}</div></div>`:'')+
+      (unitVal!==null?`<div class="calc-result-item"><div class="calc-result-lbl">Units Worth (@৳${nav})</div><div class="calc-result-val" style="font-size:14px">${fmt(unitVal)}</div></div>`:'');
+  } else { box.style.display='none'; }
+}
+function submitPayout(){
+  const sip=(state.sips||[]).find(s=>s.id===payoutSipId); if(!sip)return;
+  const date=document.getElementById('payout-date').value;
+  const grossCash=parseFloat(document.getElementById('payout-gross').value)||0;
+  const ait=parseFloat(document.getElementById('payout-ait').value)||0;
+  const units=parseFloat(document.getElementById('payout-units').value)||0;
+  const note=document.getElementById('payout-note').value.trim();
+  if(!date) return toast('Pick a date','error');
+  if(grossCash<=0&&units<=0) return toast('Enter a cash amount and/or units received','error');
+  if(ait>grossCash) return toast('AIT cannot exceed the gross cash dividend','error');
+  const netCash=+(Math.max(0,grossCash-ait)).toFixed(2);
+  sip.payouts=sip.payouts||[];
+  sip.payouts.push({id:'p_'+Date.now(),date,grossCash,ait,netCash,units,note});
+  save(); closePayoutModal(); renderSIP();
+  const parts=[];
+  if(netCash>0) parts.push(fmt(netCash)+' cash');
+  if(units>0) parts.push(units.toFixed(4)+' units');
+  toast('Payout recorded: '+parts.join(' + '),'success');
+}
+function deletePayout(sipId,payId){
+  const sip=(state.sips||[]).find(s=>s.id===sipId); if(!sip)return;
+  sip.payouts=(sip.payouts||[]).filter(p=>p.id!==payId);
+  save(); renderSIP(); toast('Payout removed','success');
+}
 function setSipNavManual(sipId,val){
   const sip=(state.sips||[]).find(s=>s.id===sipId); if(!sip)return;
   const v=parseFloat(val);
@@ -5419,6 +5574,7 @@ function setSipNavManual(sipId,val){
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.getElementById('sip-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeSipModal();});
 document.getElementById('inst-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeInstModal();});
+document.getElementById('payout-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closePayoutModal();});
 document.getElementById('modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeModal();});
 document.getElementById('wl-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeWatchlistModal();});
 document.getElementById('calc-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCalcModal();});
