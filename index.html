@@ -744,7 +744,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
 
     <!-- Monthly Investments (Shares + SIP) -->
     <div class="chart-card" style="margin-bottom:18px" data-widget="monthly">
-      <div class="chart-card-title">📆 Monthly Investment — Shares + SIP</div>
+      <div class="chart-card-title">📆 Monthly Investment — New Money vs Recycled</div>
       <div id="monthly-invest"></div>
     </div>
 
@@ -3379,6 +3379,49 @@ function getCombinedReturn(){
     combinedInvested:combInv,combinedReturn:combRet,combinedPct:combInv>0?combRet/combInv*100:null};
 }
 
+// Split every share purchase into fresh money vs recycled sale proceeds.
+// Walks transactions in date order; a buy draws on the pool of unspent sale
+// proceeds first, and whatever the pool can't cover must be new money.
+// Same-day sells are processed before buys (you sold to fund the buy).
+function getCapitalFlow(){
+  const evts=[];
+  (state.transactions||[]).forEach(t=>{
+    const amt=(t.quantity||0)*(t.price||0);
+    if(amt<=0||!t.date) return;
+    if(t.type==='buy') evts.push({date:t.date,kind:'buy',amt});
+    else if(t.type==='sell') evts.push({date:t.date,kind:'sell',amt});
+  });
+  evts.sort((a,b)=>a.date.localeCompare(b.date)||(a.kind===b.kind?0:a.kind==='sell'?-1:1));
+  let pool=0,totalFresh=0,totalRecycled=0,totalSold=0;
+  const months={};
+  evts.forEach(e=>{
+    const m=e.date.slice(0,7);
+    if(e.kind==='sell'){ pool+=e.amt; totalSold+=e.amt; return; }
+    const rec=Math.min(e.amt,pool); pool-=rec;
+    const fresh=e.amt-rec;
+    totalRecycled+=rec; totalFresh+=fresh;
+    months[m]=months[m]||{fresh:0,recycled:0};
+    months[m].fresh+=fresh; months[m].recycled+=rec;
+  });
+  return{months,totalFresh,totalRecycled,totalSold,idlePool:pool};
+}
+
+// Compare the new money the transactions imply against deposits actually logged
+function buildDepositCrossCheck(cf,sipInvested){
+  const deposits=(state.cashLedger||[]).filter(e=>e.type==='deposit').reduce((s,e)=>s+(e.amount||0),0);
+  const needed=cf.totalFresh+sipInvested;
+  const box=(color,icon,msg)=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:${color};background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:16px">
+    <span>${icon}</span><span>${msg}</span></div>`;
+  if(deposits<=0)
+    return box('var(--muted)','ℹ️',`Your trades imply <b>${fmt(needed)}</b> of new money (${fmt(cf.totalFresh)} shares + ${fmt(sipInvested)} SIP). Log your deposits in <b>💵 Manage Cash</b> to cross-check this.`);
+  const diff=needed-deposits;
+  if(Math.abs(diff)<1)
+    return box('var(--green)','✓',`Deposits logged (<b>${fmt(deposits)}</b>) match the new money your trades imply.`);
+  if(diff>0)
+    return box('var(--yellow,#f59e0b)','⚠️',`Trades imply <b>${fmt(needed)}</b> of new money but only <b>${fmt(deposits)}</b> in deposits is logged — about <b>${fmt(diff)}</b> may be missing from Manage Cash.`);
+  return box('var(--muted)','ℹ️',`Deposits logged (<b>${fmt(deposits)}</b>) exceed deployed new money (<b>${fmt(needed)}</b>) by <b>${fmt(-diff)}</b> — that difference should be sitting as cash.`);
+}
+
 function renderMonthlyInvest(){
   const el=document.getElementById('monthly-invest'); if(!el)return;
   const data=getMonthlyInvestments();
@@ -3388,8 +3431,10 @@ function renderMonthlyInvest(){
     el.innerHTML='<div style="color:var(--muted);font-size:13px;padding:24px 0;text-align:center">Add share trades or SIP installments to see your monthly investment.</div>';
     return;
   }
+  const cf=getCapitalFlow();
   const nowM=new Date().toISOString().slice(0,7);
   const cur=data[nowM]||{shares:0,sip:0};
+  const curCf=cf.months[nowM]||{fresh:0,recycled:0};
   const totShares=allMonths.reduce((s,m)=>s+data[m].shares,0);
   const totSip=allMonths.reduce((s,m)=>s+data[m].sip,0);
   const grand=totShares+totSip;
@@ -3397,7 +3442,7 @@ function renderMonthlyInvest(){
 
   const MN=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const fmtM=m=>{const[y,mo]=m.split('-');return MN[+mo-1]+" '"+y.slice(2);};
-  const cShares='#6366f1', cSip='#22c55e';
+  const cFresh='#6366f1', cRecyc='#f59e0b', cSip='#22c55e';
 
   // mini stat helper
   const stat=(lbl,val,sub,color)=>`<div style="flex:1;min-width:130px">
@@ -3406,12 +3451,15 @@ function renderMonthlyInvest(){
     ${sub?`<div style="font-size:11px;color:var(--muted);margin-top:1px">${sub}</div>`:''}</div>`;
 
   const retColor=ov.combinedPct==null?'':ov.combinedReturn>=0?'var(--green)':'var(--red)';
-  const statsRow=`<div style="display:flex;flex-wrap:wrap;gap:18px;margin-bottom:18px">
-    ${stat('This Month',fmt(cur.shares+cur.sip),`Shares ${fmt(cur.shares)} · SIP ${fmt(cur.sip)}`)}
+  const statsRow=`<div style="display:flex;flex-wrap:wrap;gap:18px;margin-bottom:14px">
+    ${stat('This Month',fmt(cur.shares+cur.sip),`New ${fmt(curCf.fresh)} · Recycled ${fmt(curCf.recycled)} · SIP ${fmt(cur.sip)}`)}
+    ${stat('New Money (Shares)',fmt(cf.totalFresh),'Fresh deposits deployed',cFresh)}
+    ${stat('Recycled (Shares)',fmt(cf.totalRecycled),'Bought from sale proceeds',cRecyc)}
+    ${stat('Idle Sale Proceeds',fmt(cf.idlePool),cf.idlePool>0?'Sold but not reinvested yet':'All proceeds redeployed')}
     ${stat('Monthly Average',fmt(avg),`Over ${allMonths.length} active month${allMonths.length!==1?'s':''}`)}
-    ${stat('Total Deployed',fmt(grand),`Shares ${fmt(totShares)} · SIP ${fmt(totSip)}`)}
     ${stat('Combined Return',ov.combinedPct!=null?fmtPnl(ov.combinedReturn)+' ('+(ov.combinedPct>=0?'+':'')+ov.combinedPct.toFixed(1)+'%)':'—','Shares + SIP, vs invested',retColor)}
-  </div>`;
+  </div>
+  ${buildDepositCrossCheck(cf,totSip)}`;
 
   // chart — last 12 months, stacked bars (shares + sip)
   const months=allMonths.slice(-12);
@@ -3425,18 +3473,27 @@ function renderMonthlyInvest(){
     yLab+=`<text x="${pL-5}" y="${(y+3).toFixed(1)}" text-anchor="end" fill="#64748b" font-size="9" font-family="system-ui">৳${fmtYAxis(v)}</text>`;}
   const bars=months.map((m,i)=>{
     const x=pL+slot*i+(slot-bw)/2;
-    const sh=data[m].shares, sp=data[m].sip;
-    const shH=(sh/maxV)*cH, spH=(sp/maxV)*cH;
-    const yTot=yOf(sh+sp);
-    let r='';
-    if(sh>0) r+=`<rect x="${x.toFixed(1)}" y="${yOf(sh).toFixed(1)}" width="${bw.toFixed(1)}" height="${shH.toFixed(1)}" fill="${cShares}" rx="2"><title>${fmtM(m)} shares: ${fmt(sh)}</title></rect>`;
-    if(sp>0) r+=`<rect x="${x.toFixed(1)}" y="${(yOf(sh)-spH).toFixed(1)}" width="${bw.toFixed(1)}" height="${spH.toFixed(1)}" fill="${cSip}" rx="2"><title>${fmtM(m)} SIP: ${fmt(sp)}</title></rect>`;
+    const mc=cf.months[m]||{fresh:0,recycled:0};
+    const fr=mc.fresh, rc=mc.recycled, sp=data[m].sip;
+    const total=fr+rc+sp;
+    const hOf=v=>(v/maxV)*cH;
+    // stack bottom→top: fresh, recycled, SIP
+    let r='', yCursor=pT+cH;
+    const seg=(val,color,label)=>{
+      if(val<=0) return '';
+      const h=hOf(val); yCursor-=h;
+      return `<rect x="${x.toFixed(1)}" y="${yCursor.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" fill="${color}" rx="2"><title>${fmtM(m)} ${label}: ${fmt(val)}</title></rect>`;
+    };
+    r+=seg(fr,cFresh,'new money');
+    r+=seg(rc,cRecyc,'recycled from sales');
+    r+=seg(sp,cSip,'SIP');
     const lbl=`<text x="${(x+bw/2).toFixed(1)}" y="${H-pB+15}" text-anchor="middle" fill="#64748b" font-size="9" font-family="system-ui">${fmtM(m)}</text>`;
-    const tot=`<text x="${(x+bw/2).toFixed(1)}" y="${(yTot-4).toFixed(1)}" text-anchor="middle" fill="var(--muted)" font-size="8.5" font-family="system-ui">${((sh+sp)/1000).toFixed(0)}k</text>`;
+    const tot=total>0?`<text x="${(x+bw/2).toFixed(1)}" y="${(yCursor-4).toFixed(1)}" text-anchor="middle" fill="var(--muted)" font-size="8.5" font-family="system-ui">${(total/1000).toFixed(0)}k</text>`:'';
     return r+lbl+tot;
   }).join('');
-  const legend=`<div style="display:flex;gap:16px;font-size:11px;color:var(--muted);margin-bottom:6px">
-    <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:${cShares}"></span>Shares buying</span>
+  const legend=`<div style="display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-bottom:6px">
+    <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:${cFresh}"></span>New money (shares)</span>
+    <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:${cRecyc}"></span>Recycled from sales</span>
     <span style="display:flex;align-items:center;gap:5px"><span style="width:10px;height:10px;border-radius:2px;background:${cSip}"></span>SIP</span>
   </div>`;
   el.innerHTML=statsRow+legend+`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px">${grid}${yLab}${bars}</svg>`;
@@ -4294,6 +4351,12 @@ function runSelfChecks(){
       if(Math.abs((p.netCash||0)-((p.grossCash||0)-(p.ait||0)))>0.01) issues.push(`Payout ${sip.fundName} ${p.date}: net ≠ gross − AIT`);
       if((p.ait||0)>(p.grossCash||0)) issues.push(`Payout ${sip.fundName} ${p.date}: AIT exceeds gross`);
     }));
+    // Fresh + recycled must account for every taka of share buying
+    const cf=getCapitalFlow();
+    const totalBuys=(state.transactions||[]).filter(t=>t.type==='buy').reduce((s,t)=>s+(t.quantity||0)*(t.price||0),0);
+    if(Math.abs((cf.totalFresh+cf.totalRecycled)-totalBuys)>0.01)
+      issues.push(`Capital flow: fresh+recycled ${(cf.totalFresh+cf.totalRecycled).toFixed(2)} ≠ total buys ${totalBuys.toFixed(2)}`);
+    if(cf.idlePool<-0.01) issues.push(`Capital flow: idle sale pool negative (${cf.idlePool})`);
     const xirr=(typeof calcXIRR==='function')?calcXIRR():null;
     if(xirr!==null&&(xirr<-100||xirr>100000)) issues.push(`XIRR out of range: ${xirr}`);
     if(cashBalance()<0) issues.push(`Cash balance negative: ${cashBalance()}`);
