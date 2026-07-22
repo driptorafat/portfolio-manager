@@ -3406,20 +3406,19 @@ function getCapitalFlow(){
   return{months,totalFresh,totalRecycled,totalSold,idlePool:pool};
 }
 
-// Compare the new money the transactions imply against deposits actually logged
-function buildDepositCrossCheck(cf,sipInvested){
+// Cross-check share buying against logged deposits. Shares only — SIP is a
+// separate commitment and is deliberately left out of this calculation.
+function buildDepositCrossCheck(cf){
   const deposits=(state.cashLedger||[]).filter(e=>e.type==='deposit').reduce((s,e)=>s+(e.amount||0),0);
-  const needed=cf.totalFresh+sipInvested;
+  const needed=cf.totalFresh;
   const box=(color,icon,msg)=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;color:${color};background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:16px">
     <span>${icon}</span><span>${msg}</span></div>`;
+  if(needed<=0) return '';
   if(deposits<=0)
-    return box('var(--muted)','ℹ️',`Your trades imply <b>${fmt(needed)}</b> of new money (${fmt(cf.totalFresh)} shares + ${fmt(sipInvested)} SIP). Log your deposits in <b>💵 Manage Cash</b> to cross-check this.`);
-  const diff=needed-deposits;
-  if(Math.abs(diff)<1)
-    return box('var(--green)','✓',`Deposits logged (<b>${fmt(deposits)}</b>) match the new money your trades imply.`);
-  if(diff>0)
-    return box('var(--yellow,#f59e0b)','⚠️',`Trades imply <b>${fmt(needed)}</b> of new money but only <b>${fmt(deposits)}</b> in deposits is logged — about <b>${fmt(diff)}</b> may be missing from Manage Cash.`);
-  return box('var(--muted)','ℹ️',`Deposits logged (<b>${fmt(deposits)}</b>) exceed deployed new money (<b>${fmt(needed)}</b>) by <b>${fmt(-diff)}</b> — that difference should be sitting as cash.`);
+    return box('var(--muted)','ℹ️',`Your share buying required <b>${fmt(needed)}</b> of new money. Log your deposits in <b>💵 Manage Cash</b> to cross-check this.`);
+  if(deposits+1>=needed)
+    return box('var(--green)','✓',`Logged deposits (<b>${fmt(deposits)}</b>) cover the <b>${fmt(needed)}</b> of new money your share buying required.`);
+  return box('var(--yellow,#f59e0b)','⚠️',`Share buying required <b>${fmt(needed)}</b> of new money but only <b>${fmt(deposits)}</b> in deposits is logged — about <b>${fmt(needed-deposits)}</b> may be missing from Manage Cash.`);
 }
 
 function renderMonthlyInvest(){
@@ -3459,7 +3458,7 @@ function renderMonthlyInvest(){
     ${stat('Monthly Average',fmt(avg),`Over ${allMonths.length} active month${allMonths.length!==1?'s':''}`)}
     ${stat('Combined Return',ov.combinedPct!=null?fmtPnl(ov.combinedReturn)+' ('+(ov.combinedPct>=0?'+':'')+ov.combinedPct.toFixed(1)+'%)':'—','Shares + SIP, vs invested',retColor)}
   </div>
-  ${buildDepositCrossCheck(cf,totSip)}`;
+  ${buildDepositCrossCheck(cf)}`;
 
   // chart — last 12 months, stacked bars (shares + sip)
   const months=allMonths.slice(-12);
