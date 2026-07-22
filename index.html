@@ -3020,6 +3020,11 @@ function renderDashboard(){
   // Grand total = P&L + cash dividends + current value of bonus shares
   const grandTotal=totalPnL+totCashDiv+totBonusValue;
   const grandRetPct=totInv>0?(grandTotal/totInv)*100:null;
+  // Return measured against the money you actually brought in from outside.
+  // Current cost basis absorbs profits that were sold and reinvested, which
+  // inflates the denominator and understates how hard your own money worked.
+  const ownMoney=getCapitalFlow().totalFresh;
+  const ownRetPct=ownMoney>0?(grandTotal/ownMoney)*100:null;
   const cagr=calcCAGR(grandRetPct);
   const pYrs=portfolioYears()||0;
 
@@ -3061,6 +3066,10 @@ function renderDashboard(){
   // Returns detail (expandable) — the secondary metrics live here
   const mini=(lbl,val,cls,sub)=>`<div class="ret-mini"><div class="ret-mini-lbl">${lbl}</div><div class="ret-mini-val ${cls||''}">${val}</div><div class="ret-mini-sub">${sub||''}</div></div>`;
   document.getElementById('returns-detail').innerHTML=
+    mini('Return on Own Money',
+      ownRetPct!==null?(ownRetPct>=0?'+':'')+ownRetPct.toFixed(2)+'%':'—',
+      ownRetPct!==null?(ownRetPct>=0?'green':'red'):'',
+      ownMoney>0?`Gain ÷ ${fmt(ownMoney)} you deposited`:'Needs share trades')+
     mini('Realized P&L',fmtPnl(totReal),totReal>=0?'green':'red','Closed trades')+
     mini('Unrealized P&L',fmtPnl(totUnreal),totUnreal>=0?'green':'red','Open positions vs cost')+
     mini("Day's Gain",dayHas?fmtPnl(dayGain)+(dayPct!==null?' ('+(dayPct>=0?'+':'')+dayPct.toFixed(2)+'%)':''):'—',dayHas?(dayGain>=0?'green':'red'):'','Today vs previous sync')+
