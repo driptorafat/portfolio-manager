@@ -641,6 +641,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
         <div class="theme-opt" onclick="openSplitModal()">🔀&nbsp; Log Stock Split</div>
         <div class="theme-opt" onclick="openDSEXModal()">📈&nbsp; Add DSEX History</div>
+        <div class="theme-opt" onclick="openCommissionModal()">🧾&nbsp; Brokerage Commission</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
         <div class="theme-opt" onclick="hardRefresh()">🔄&nbsp; Clear Cache &amp; Reload</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
@@ -1068,6 +1069,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <input id="f-total" placeholder="0.00" readonly style="opacity:.55"/>
       </div>
     </div>
+    <div id="f-commission-note" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:12.5px"></div>
     <div class="form-group" id="purpose-group">
       <label>Purpose</label>
       <div class="purpose-toggle">
@@ -1404,6 +1406,26 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <div class="modal-actions">
       <button class="btn-cancel" onclick="document.getElementById('dsex-modal').classList.remove('open')">Cancel</button>
       <button class="btn-primary" onclick="submitDSEXHistory()">Save History</button>
+    </div>
+  </div>
+</div>
+
+<!-- BROKERAGE COMMISSION MODAL -->
+<div class="modal-overlay" id="commission-modal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-title">🧾 Brokerage Commission</div>
+    <label class="theme-opt" style="cursor:pointer;font-size:14px;padding:10px 12px;background:var(--surface2);border-radius:8px;margin-bottom:14px">
+      <input type="checkbox" id="comm-on" onchange="commModalPreview()" style="margin-right:10px"/> Apply commission to buys &amp; sells
+    </label>
+    <div class="form-group">
+      <label>Commission Rate (%) — per trade</label>
+      <input id="comm-rate" type="number" step="0.01" min="0" placeholder="0.4" oninput="commModalPreview()"/>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Your DSE broker's rate. Add other percentage charges here too if you want them included.</div>
+    </div>
+    <div id="comm-preview" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:12.5px;margin-bottom:8px"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeCommissionModal()">Cancel</button>
+      <button class="btn-primary" onclick="submitCommission()">Save</button>
     </div>
   </div>
 </div>
@@ -2343,7 +2365,10 @@ const FALLBACK_COLORS=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#8b5cf
 function getSectorColor(s,i){ return SECTOR_COLORS[s]||FALLBACK_COLORS[i%FALLBACK_COLORS.length]; }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{}, prevPrices:{}, sips:[], cashLedger:[], goals:[], lastBackupAt:null, assetTargets:{}, uiPrefs:{returnsOpen:false,hiddenWidgets:[]} };
+let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{}, prevPrices:{}, sips:[], cashLedger:[], goals:[], lastBackupAt:null, assetTargets:{}, uiPrefs:{returnsOpen:false,hiddenWidgets:[]}, commissionOn:true, commissionRate:0.4 };
+// Brokerage commission as a fraction (e.g. 0.004 for 0.4%). Added to buy cost,
+// deducted from sell proceeds. 0 when disabled.
+function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
 // Cloud sync globals
 let _fbAuth=null,_fbDb=null,_fbUser=null,_saveTimer=null,_cloudLoading=false;
 let formType='buy', formPurpose='investing', editingId=null;
@@ -2401,7 +2426,7 @@ function openModal(prefill) {
   document.getElementById('modal').classList.add('open');
 }
 function closeModal(){ editingId=null; document.getElementById('modal').classList.remove('open'); }
-function setType(t){ formType=t; refreshTypeUI(); updateSellInfo(); }
+function setType(t){ formType=t; refreshTypeUI(); updateSellInfo(); calcTotal(); }
 function setPurpose(p){ formPurpose=p; refreshPurposeUI(); }
 function refreshTypeUI(){
   document.getElementById('btn-buy').className='type-btn'+(formType==='buy'?' active-buy':'');
@@ -2417,7 +2442,23 @@ function refreshPurposeUI(){
 function calcTotal(){
   const q=parseFloat(document.getElementById('f-qty').value)||0;
   const p=parseFloat(document.getElementById('f-price').value)||0;
-  document.getElementById('f-total').value=q&&p?(q*p).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
+  const gross=q*p;
+  document.getElementById('f-total').value=gross?gross.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}):'';
+  const note=document.getElementById('f-commission-note');
+  const cr=commissionRate();
+  if(!note) return;
+  if(gross>0&&cr>0){
+    const comm=gross*cr;
+    const isBuy=formType==='buy';
+    const net=isBuy?gross+comm:gross-comm;
+    const pctLbl=(cr*100).toFixed(2).replace(/\.?0+$/,'')+'%';
+    note.style.display='block';
+    note.innerHTML=isBuy
+      ? `<div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Brokerage (${pctLbl})</span><span style="color:var(--red);font-weight:600">+ ${fmt(comm)}</span></div>
+         <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-weight:600">Net cost (you pay)</span><span style="font-weight:700">${fmt(net)}</span></div>`
+      : `<div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Brokerage (${pctLbl})</span><span style="color:var(--red);font-weight:600">− ${fmt(comm)}</span></div>
+         <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="font-weight:600">Net proceeds (you get)</span><span style="font-weight:700;color:var(--green)">${fmt(net)}</span></div>`;
+  } else { note.style.display='none'; }
 }
 function updateSellInfo(){
   const sym=document.getElementById('f-symbol').value.trim().toUpperCase();
@@ -2593,30 +2634,33 @@ function calcPnL(sym, purpose){
     .filter(t=>t.type==='sell'&&t.symbol===sym)
     .sort((a,b)=>new Date(a.date)-new Date(b.date));
 
-  const lots=buys.map(b=>({price:b.price,remaining:b.quantity,date:b.date}));
+  // Commission: buy price effectively higher, sell price effectively lower.
+  const cr=commissionRate(), bm=1+cr, sm=1-cr;
+  const lots=buys.map(b=>({price:b.price*bm,remaining:b.quantity,date:b.date}));
   let realized=0,soldQty=0;
   for(const sell of sells){
     let rem=sell.quantity;
     for(const lot of lots){
       if(lot.remaining<=0)continue;
       const n=Math.min(lot.remaining,rem);
-      realized+=n*(sell.price-lot.price);
+      realized+=n*(sell.price*sm-lot.price);
       lot.remaining-=n; rem-=n; soldQty+=n;
       if(rem<=0)break;
     }
   }
   const held=lots.filter(l=>l.remaining>0);
   const heldQty=held.reduce((s,l)=>s+l.remaining,0);
-  const heldCost=held.reduce((s,l)=>s+l.remaining*l.price,0);
+  const heldCost=held.reduce((s,l)=>s+l.remaining*l.price,0); // incl. buy commission
   const avgBuy=heldQty>0?heldCost/heldQty:0;
   const totBuyQty=buys.reduce((s,b)=>s+b.quantity,0);
-  const totBuyCost=buys.reduce((s,b)=>s+b.quantity*b.price,0);
+  const totBuyCost=buys.reduce((s,b)=>s+b.quantity*b.price*bm,0);
   const avgBuyAll=totBuyQty>0?totBuyCost/totBuyQty:0;
   const totSellQty=sells.reduce((s,b)=>s+b.quantity,0);
-  const totSellVal=sells.reduce((s,b)=>s+b.quantity*b.price,0);
+  const totSellVal=sells.reduce((s,b)=>s+b.quantity*b.price*sm,0);
   const avgSell=totSellQty>0?totSellVal/totSellQty:0;
+  const commission=(buys.reduce((s,b)=>s+b.quantity*b.price,0)+sells.reduce((s,b)=>s+b.quantity*b.price,0))*cr;
   const openLots=held.map(l=>({date:l.date,qty:l.remaining,price:l.price}));
-  return{realized,heldQty,heldCost,avgBuy,soldQty,avgBuyAll,avgSell,totBuyQty,totBuyCost,lots:openLots};
+  return{realized,heldQty,heldCost,avgBuy,soldQty,avgBuyAll,avgSell,totBuyQty,totBuyCost,commission,lots:openLots};
 }
 
 // ─── DAY CHANGE (vs previous sync baseline) ──────────────────────────────────
@@ -2646,10 +2690,12 @@ function calcCAGR(totalRetPct){
   return (Math.pow(growth,1/yrs)-1)*100;
 }
 function calcXIRR(){
+  const cr=commissionRate();
   const flows=[];
   state.transactions.forEach(t=>{
-    const amt=t.quantity*t.price;
-    flows.push({date:new Date(t.date), amount:t.type==='buy'?-amt:amt});
+    const gross=t.quantity*t.price;
+    // Buys cost more, sells return less once commission is applied
+    flows.push({date:new Date(t.date), amount:t.type==='buy'?-gross*(1+cr):gross*(1-cr)});
   });
   (state.dividends||[]).forEach(d=>{
     const cash=d.cashAmount!=null?d.cashAmount:(d.type==='cash'?d.amount||0:0);
@@ -3074,7 +3120,8 @@ function renderDashboard(){
     mini('Unrealized P&L',fmtPnl(totUnreal),totUnreal>=0?'green':'red','Open positions vs cost')+
     mini("Day's Gain",dayHas?fmtPnl(dayGain)+(dayPct!==null?' ('+(dayPct>=0?'+':'')+dayPct.toFixed(2)+'%)':''):'—',dayHas?(dayGain>=0?'green':'red'):'','Today vs previous sync')+
     mini('XIRR',xirr!==null?(xirr>=0?'+':'')+xirr.toFixed(2)+'%/yr':'—',xirr!==null?(xirr>=0?'green':'red'):'','Money-weighted annual')+
-    mini('CAGR',cagr!==null?(cagr>=0?'+':'')+cagr.toFixed(2)+'%/yr':'—',cagr!==null?(cagr>=0?'green':'red'):'',cagr!==null?`Annualized · ${pYrs.toFixed(1)}yr`:'Needs 1+ month');
+    mini('CAGR',cagr!==null?(cagr>=0?'+':'')+cagr.toFixed(2)+'%/yr':'—',cagr!==null?(cagr>=0?'green':'red'):'',cagr!==null?`Annualized · ${pYrs.toFixed(1)}yr`:'Needs 1+ month')+
+    (commissionRate()>0?mini('Brokerage Paid',fmt(totalCommission()),'red',`${(commissionRate()*100).toFixed(2).replace(/\.?0+$/,'')}% on every trade`):'');
   document.getElementById('returns-detail').classList.toggle('open',!!retOpen);
 
   // Market status
@@ -3388,15 +3435,53 @@ function getCombinedReturn(){
     combinedInvested:combInv,combinedReturn:combRet,combinedPct:combInv>0?combRet/combInv*100:null};
 }
 
+// Total brokerage commission across all share trades (buys + sells)
+function totalCommission(){
+  const cr=commissionRate(); if(!cr) return 0;
+  return (state.transactions||[]).reduce((s,t)=>s+(t.quantity||0)*(t.price||0)*cr,0);
+}
+function openCommissionModal(){
+  toggleDataMenu(true);
+  document.getElementById('comm-on').checked=state.commissionOn!==false;
+  document.getElementById('comm-rate').value=state.commissionRate!=null?state.commissionRate:0.4;
+  commModalPreview();
+  document.getElementById('commission-modal').classList.add('open');
+}
+function closeCommissionModal(){ document.getElementById('commission-modal').classList.remove('open'); }
+function commModalPreview(){
+  const on=document.getElementById('comm-on').checked;
+  const rate=parseFloat(document.getElementById('comm-rate').value)||0;
+  const cr=on?rate/100:0;
+  const el=document.getElementById('comm-preview');
+  const paidNow=totalCommission();
+  const row=(l,v,c)=>`<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--muted)">${l}</span><span style="font-weight:600${c?';color:'+c:''}">${v}</span></div>`;
+  el.innerHTML=on&&cr>0
+    ? row('On a ৳10,000 buy you pay',fmt(10000*(1+cr)),'')+row('On a ৳10,000 sell you receive',fmt(10000*(1-cr)),'var(--green)')+`<div style="height:1px;background:var(--border);margin:6px 0"></div>`+row('Commission on your trades so far',fmt(paidNow),'var(--red)')
+    : `<span style="color:var(--muted)">Commission is off — buys and sells use the raw price with no charge applied.</span>`;
+}
+function submitCommission(){
+  const on=document.getElementById('comm-on').checked;
+  const rate=parseFloat(document.getElementById('comm-rate').value);
+  if(on&&(isNaN(rate)||rate<0)) return toast('Enter a valid commission rate','error');
+  state.commissionOn=on;
+  state.commissionRate=isNaN(rate)?0:rate;
+  save(); render();
+  closeCommissionModal();
+  toast(on?`Commission set to ${rate}% per trade`:'Commission turned off','success');
+}
+
 // Split every share purchase into fresh money vs recycled sale proceeds.
 // Walks transactions in date order; a buy draws on the pool of unspent sale
 // proceeds first, and whatever the pool can't cover must be new money.
 // Same-day sells are processed before buys (you sold to fund the buy).
 function getCapitalFlow(){
+  const cr=commissionRate();
   const evts=[];
   (state.transactions||[]).forEach(t=>{
-    const amt=(t.quantity||0)*(t.price||0);
-    if(amt<=0||!t.date) return;
+    const gross=(t.quantity||0)*(t.price||0);
+    // Cash actually deployed on a buy includes commission; proceeds from a sell are net of it
+    const amt=t.type==='buy'?gross*(1+cr):gross*(1-cr);
+    if(gross<=0||!t.date) return;
     if(t.type==='buy') evts.push({date:t.date,kind:'buy',amt});
     else if(t.type==='sell') evts.push({date:t.date,kind:'sell',amt});
   });
@@ -4359,9 +4444,10 @@ function runSelfChecks(){
       if(Math.abs((p.netCash||0)-((p.grossCash||0)-(p.ait||0)))>0.01) issues.push(`Payout ${sip.fundName} ${p.date}: net ≠ gross − AIT`);
       if((p.ait||0)>(p.grossCash||0)) issues.push(`Payout ${sip.fundName} ${p.date}: AIT exceeds gross`);
     }));
-    // Fresh + recycled must account for every taka of share buying
+    // Fresh + recycled must account for every taka of share buying (incl. commission)
     const cf=getCapitalFlow();
-    const totalBuys=(state.transactions||[]).filter(t=>t.type==='buy').reduce((s,t)=>s+(t.quantity||0)*(t.price||0),0);
+    const bm=1+commissionRate();
+    const totalBuys=(state.transactions||[]).filter(t=>t.type==='buy').reduce((s,t)=>s+(t.quantity||0)*(t.price||0)*bm,0);
     if(Math.abs((cf.totalFresh+cf.totalRecycled)-totalBuys)>0.01)
       issues.push(`Capital flow: fresh+recycled ${(cf.totalFresh+cf.totalRecycled).toFixed(2)} ≠ total buys ${totalBuys.toFixed(2)}`);
     if(cf.idlePool<-0.01) issues.push(`Capital flow: idle sale pool negative (${cf.idlePool})`);
@@ -4399,7 +4485,7 @@ function clearAllData() {
   const pid = getActivePortfolioId();
   const name = (getPortfolioList().find(p=>p.id===pid)||{}).name || 'this portfolio';
   if(!confirm(`Delete ALL data for "${name}" permanently?\n\nThis cannot be undone. Export a backup first if needed.`)) return;
-  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[],cashLedger:[],goals:[],lastBackupAt:null,assetTargets:{},uiPrefs:{returnsOpen:false,hiddenWidgets:[]}};
+  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[],cashLedger:[],goals:[],lastBackupAt:null,assetTargets:{},uiPrefs:{returnsOpen:false,hiddenWidgets:[]},commissionOn:true,commissionRate:0.4};
   save(); render();
   document.getElementById('sync-status').textContent='';
   toast('All data cleared','success');
@@ -4564,16 +4650,17 @@ function buildTaxReport(){
   }));
   // Realized gains per fiscal year (FIFO matched at sell date)
   const gains={};
+  const _cr=commissionRate(), _bm=1+_cr, _sm=1-_cr;
   getSymbols().forEach(sym=>{
     const buys=state.transactions.filter(t=>t.type==='buy'&&t.symbol===sym).sort((a,b)=>new Date(a.date)-new Date(b.date));
     const sells=state.transactions.filter(t=>t.type==='sell'&&t.symbol===sym).sort((a,b)=>new Date(a.date)-new Date(b.date));
-    const lots=buys.map(b=>({price:b.price,remaining:b.quantity}));
+    const lots=buys.map(b=>({price:b.price*_bm,remaining:b.quantity}));
     for(const sell of sells){
       let rem=sell.quantity,g=0;
       for(const lot of lots){
         if(lot.remaining<=0)continue;
         const n=Math.min(lot.remaining,rem);
-        g+=n*(sell.price-lot.price); lot.remaining-=n; rem-=n;
+        g+=n*(sell.price*_sm-lot.price); lot.remaining-=n; rem-=n;
         if(rem<=0)break;
       }
       const f=fiscalYearOf(sell.date);
@@ -5232,7 +5319,7 @@ function doSwitchPortfolio(pid) {
   if (pid === getActivePortfolioId()) return;
   save();
   localStorage.setItem('pm_active', pid);
-  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[],cashLedger:[],goals:[],lastBackupAt:null,assetTargets:{},uiPrefs:{returnsOpen:false,hiddenWidgets:[]}};
+  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[],cashLedger:[],goals:[],lastBackupAt:null,assetTargets:{},uiPrefs:{returnsOpen:false,hiddenWidgets:[]},commissionOn:true,commissionRate:0.4};
   load();
   updatePortfolioSwitcher();
   render();
@@ -5704,6 +5791,7 @@ document.getElementById('div-modal').addEventListener('click',e=>{if(e.target===
 document.getElementById('alert-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAlertModal();});
 document.getElementById('split-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)document.getElementById('split-modal').classList.remove('open');});
 document.getElementById('dsex-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
+document.getElementById('commission-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCommissionModal();});
 document.getElementById('cash-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCashModal();});
 document.getElementById('goal-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeGoalModal();});
 document.getElementById('csv-import-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
