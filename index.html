@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
 <title>Rafat's Portfolio Manager</title>
 <link rel="manifest" href="manifest.json"/>
 <meta name="theme-color" content="#6366f1"/>
@@ -2369,6 +2372,20 @@ let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, wa
 // Brokerage commission as a fraction (e.g. 0.004 for 0.4%). Added to buy cost,
 // deducted from sell proceeds. 0 when disabled.
 function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
+
+// Bump this on every deploy — the auto-updater compares it against the live file.
+const APP_VERSION='2026-10-25.1';
+
+// Manual escape hatch (data menu): unregister SWs, clear caches, hard reload fresh.
+function hardRefresh(){
+  try{toggleDataMenu&&toggleDataMenu(true);}catch(e){}
+  const done=()=>{ sessionStorage.removeItem('pm_updated_to'); location.replace(location.pathname+'?_='+Date.now()); };
+  const jobs=[];
+  if('serviceWorker' in navigator) jobs.push(navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.unregister()))).catch(()=>{}));
+  if(window.caches&&caches.keys) jobs.push(caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).catch(()=>{}));
+  Promise.all(jobs).then(done,done);
+  setTimeout(done,1500); // fallback if a promise hangs
+}
 // Cloud sync globals
 let _fbAuth=null,_fbDb=null,_fbUser=null,_saveTimer=null,_cloudLoading=false;
 let formType='buy', formPurpose='investing', editingId=null;
@@ -5810,11 +5827,34 @@ if(state.lastSync)document.getElementById('sync-status').textContent='Last sync:
 // ── Auto-init Firebase (restores auth session if previously signed in) ──
 window.addEventListener('load',()=>initFirebase());
 
-// ── Register self-destruct SW to clear any old cached versions ──
-// This runs once, clears caches, then the SW unregisters itself permanently.
+// ── Kill any lingering service worker + all caches (legacy cache-first SW) ──
 if('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('./sw.js').catch(()=>{});
+  navigator.serviceWorker.getRegistrations().then(regs=>{
+    regs.forEach(r=>r.unregister());
+  }).catch(()=>{});
+  if(window.caches&&caches.keys) caches.keys().then(ks=>ks.forEach(k=>caches.delete(k))).catch(()=>{});
 }
+
+// ── Auto-update: on load, fetch the deployed file fresh and compare versions.
+// If a newer build is live, reload once to pick it up (guarded against loops).
+function checkForUpdate(){
+  if(location.protocol==='file:') return;
+  fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'})
+    .then(r=>r.ok?r.text():Promise.reject())
+    .then(html=>{
+      const m=html.match(/APP_VERSION\s*=\s*'([^']+)'/);
+      if(!m) return;
+      const live=m[1];
+      if(live===APP_VERSION) return;              // already on the latest
+      if(sessionStorage.getItem('pm_updated_to')===live) return; // tried once, avoid loop
+      sessionStorage.setItem('pm_updated_to',live);
+      toast&&toast('নতুন ভার্সন লোড হচ্ছে…','info');
+      setTimeout(()=>location.reload(),400);
+    }).catch(()=>{});
+}
+window.addEventListener('load',checkForUpdate);
+// Re-check whenever the user returns to the tab after a while
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) checkForUpdate(); });
 </script>
 </body>
 </html>
