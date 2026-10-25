@@ -1,6 +1,7 @@
-// Network-only service worker. It exists only so the app is installable
-// (Add to Home Screen). It never caches anything, so a deploy is always
-// picked up — and on activate it wipes any cache left by older versions.
+// Minimal service worker: no fetch handler at all, so every request goes
+// straight to the network exactly as in a normal browser tab (a pass-through
+// fetch handler broke cross-origin price requests in the iOS home-screen app).
+// It only exists to wipe caches left by older cache-first versions.
 self.addEventListener('install', () => self.skipWaiting());
 
 self.addEventListener('activate', e => {
@@ -9,12 +10,4 @@ self.addEventListener('activate', e => {
       .then(keys => Promise.all(keys.map(k => caches.delete(k))))
       .then(() => self.clients.claim())
   );
-});
-
-// Pass-through: same-origin GETs go straight to the network. Cross-origin
-// (price API, proxies) is left alone entirely.
-self.addEventListener('fetch', e => {
-  const req = e.request;
-  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
-  e.respondWith(fetch(req));
 });

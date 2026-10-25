@@ -1697,8 +1697,9 @@ let _proxyHealth={state:'unknown',idx:-1}; // 'ok' (primary), 'degraded' (fallba
 // fmt: jina return format ('text' for JSON, 'html' for pages). validate: optional
 // predicate the returned text must satisfy (rejects garbage like a proxy's own homepage).
 async function fetchViaProxy(targetUrl, ms=15000, fmt, validate) {
-  let last;
+  let last; const errs=[];
   for (let i=0;i<PROXIES.length;i++) {
+    const host=(()=>{ try{ const s=PROXIES[i](targetUrl,fmt); return new URL(typeof s==='string'?s:s.url).hostname; }catch(_){ return 'proxy'+i; } })();
     try {
       const spec=PROXIES[i](targetUrl, fmt);
       const url=typeof spec==='string'?spec:spec.url;
@@ -1712,16 +1713,29 @@ async function fetchViaProxy(targetUrl, ms=15000, fmt, validate) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       let txt=await res.text();
       if (txt&&txt.startsWith('{"contents"')) { try { txt=JSON.parse(txt).contents||''; } catch(_){} }
-      if (txt&&txt.length>200&&(!validate||validate(txt))){ _proxyHealth={state:i===0?'ok':'degraded',idx:i}; updateProxyIndicator(); return txt; }
-      throw new Error('invalid/empty response');
-    } catch(e){ last=e; }
+      if (txt&&txt.length>200&&(!validate||validate(txt))){ _proxyHealth={state:i===0?'ok':'degraded',idx:i,errors:errs}; updateProxyIndicator(); return txt; }
+      throw new Error(`wrong content (${txt?txt.length:0}b: ${String(txt||'').slice(0,40).replace(/\s+/g,' ')})`);
+    } catch(e){
+      last=e;
+      const why=e.name==='AbortError'?`timeout ${ms/1000}s`:(e.message||String(e));
+      errs.push(`${host}: ${why}`);
+    }
   }
-  _proxyHealth={state:'down',idx:-1}; updateProxyIndicator();
-  throw last||new Error('All proxies failed');
+  _proxyHealth={state:'down',idx:-1,errors:errs,at:new Date().toISOString()}; updateProxyIndicator();
+  console.warn('All proxies failed:',errs);
+  throw new Error('All data sources failed');
+}
+// Tap the warning to see exactly why each source failed (helps diagnose phones)
+function showProxyDiagnostics(){
+  const e=(_proxyHealth&&_proxyHealth.errors)||[];
+  const env=(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)?'home-screen app':'browser tab';
+  const sw=navigator.serviceWorker&&navigator.serviceWorker.controller?'yes':'no';
+  alert(`Data source check (${env}, SW active: ${sw}, online: ${navigator.onLine})\n\n`+(e.length?e.map(x=>'• '+x).join('\n'):'No failures recorded.')+`\n\nApp ${APP_VERSION}`);
 }
 function updateProxyIndicator(){
   const el=document.getElementById('proxy-indicator'); if(!el) return;
-  if(_proxyHealth.state==='down'){ el.style.display='inline-flex'; el.style.color='var(--red)'; el.textContent='⚠️ Live-data proxies unreachable — prices may be stale'; }
+  el.style.cursor='pointer'; el.onclick=showProxyDiagnostics;
+  if(_proxyHealth.state==='down'){ el.style.display='inline-flex'; el.style.color='var(--red)'; el.textContent='⚠️ Live prices unreachable — showing last saved prices (tap for details)'; }
   else if(_proxyHealth.state==='degraded'){ el.style.display='inline-flex'; el.style.color='var(--yellow,#f59e0b)'; el.textContent='⚠️ Using a fallback data source — prices may be delayed'; }
   else { el.style.display='none'; }
 }
@@ -2454,7 +2468,7 @@ let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, wa
 function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
 
 // Bump this on every deploy — the auto-updater compares it against the live file.
-const APP_VERSION='2026-10-25.6';
+const APP_VERSION='2026-10-25.7';
 
 // Manual escape hatch (data menu): unregister SWs, clear caches, hard reload fresh.
 function hardRefresh(){
@@ -2667,9 +2681,30 @@ async function syncFromDSE(){
       showSyncError(notFound);
     }
   } catch(e){
-    toast(`❌ Sync failed: ${e.message||'Network error'}\nCheck your connection and try again.`,'error');
+    // This device couldn't reach a price source — use prices another device synced to the cloud
+    const got=await pullCloudPrices().catch(()=>null);
+    if(got) toast(`⚠️ Live prices unreachable on this device.\n☁️ Using prices from your last sync on another device (${new Date(got).toLocaleString()}).\nTap the red warning for details.`,'info');
+    else toast(`❌ Sync failed: ${e.message||'Network error'}\nTap the red warning for details.`,'error');
   }
   finally{ isSyncing=false; setLoading(false); }
+}
+
+// Fallback for devices that can't reach the proxies (e.g. some iPhones): adopt the
+// prices from the cloud copy if they are newer than this device's. Returns that sync time.
+async function pullCloudPrices(){
+  if(!_fbUser||!_fbDb) return null;
+  const snap=await getCloudDocRef().get();
+  if(!snap.exists) return null;
+  const c=JSON.parse(snap.data().data||'{}');
+  if(!c.lastSync||!c.currentPrices||(c.lastSync<=(state.lastSync||''))) return null;
+  state.currentPrices=Object.assign({},state.currentPrices||{},c.currentPrices);
+  if(c.prevPrices) state.prevPrices=Object.assign({},state.prevPrices||{},c.prevPrices);
+  if(c.sectorMap) state.sectorMap=Object.assign({},c.sectorMap,state.sectorMap||{});
+  state.lastSync=c.lastSync;
+  localStorage.setItem(getStateKey(),JSON.stringify(state)); // local only — don't push back
+  render();
+  const ss=document.getElementById('sync-status'); if(ss) ss.textContent='Cloud prices · '+new Date(c.lastSync).toLocaleTimeString();
+  return c.lastSync;
 }
 
 // Apply the dse.com.bd JSON rows: update prices (held + watchlist), fill sectors.
@@ -5395,8 +5430,13 @@ async function loadFromCloud(){
       const loaded=JSON.parse(snap.data().data||'{}');
       // merge: prefer cloud data but keep any freshly fetched prices;
       // backfill keys added in newer versions (assets, commission, …)
-      const mergedPrices=Object.assign({},loaded.currentPrices||{},state.currentPrices||{});
-      state=Object.assign({},JSON.parse(JSON.stringify(STATE_DEFAULTS)),loaded,{currentPrices:mergedPrices});
+      // whichever side synced prices most recently wins
+      const cloudNewer=(loaded.lastSync||'')>(state.lastSync||'');
+      const mergedPrices=cloudNewer
+        ? Object.assign({},state.currentPrices||{},loaded.currentPrices||{})
+        : Object.assign({},loaded.currentPrices||{},state.currentPrices||{});
+      const lastSync=cloudNewer?loaded.lastSync:(state.lastSync||loaded.lastSync||null);
+      state=Object.assign({},JSON.parse(JSON.stringify(STATE_DEFAULTS)),loaded,{currentPrices:mergedPrices,lastSync});
       localStorage.setItem(getStateKey(),JSON.stringify(state));
       _cloudLoading=false; _cloudReady=true;
       render(); renderNoDataHint();
