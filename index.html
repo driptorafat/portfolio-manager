@@ -1603,37 +1603,45 @@ tbody td{padding:11px 14px;vertical-align:middle}
 <div class="toast" id="toast"></div>
 
 <script>
-// ─── PROXY WATERFALL ──────────────────────────────────────────────────────────
-const DSE_PRICE  = 'https://www.dsebd.org/latest_share_price_scroll_l.php';
-const DSE_CLOSE  = 'https://www.dsebd.org/dse_close_price.php';
-const DSE_CO     = 'https://www.dsebd.org/displayCompany.php?name=';
+// ─── DATA SOURCES ─────────────────────────────────────────────────────────────
+// DSE moved from dsebd.org → dse.com.bd (a JSON API). The old site lives on at
+// old.dsebd.org as an HTML fallback.
+const DSE_API    = 'https://www.dse.com.bd/api/live/companies'; // full market JSON (price + sector)
+const DSE_PRICE  = 'https://old.dsebd.org/latest_share_price_scroll_l.php';
+const DSE_CLOSE  = 'https://old.dsebd.org/dse_close_price.php';
+const DSE_CO     = 'https://old.dsebd.org/displayCompany.php?name=';
 
+// Proxy waterfall. jina.ai is the primary — it is reliable and, with
+// X-Return-Format, passes JSON through raw ('text') or keeps HTML tables ('html').
 const PROXIES = [
-  u => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-  u => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-  u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-  u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-  u => `https://thingproxy.freeboard.io/fetch/${u}`,
-  u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+  (u,fmt) => ({url:'https://r.jina.ai/'+u, headers:{'X-Return-Format':fmt||'html'}}),
+  (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
+  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
 ];
 
-let _proxyHealth={state:'unknown',idx:-1}; // 'ok' (first proxy), 'degraded' (fallback used), 'down'
-async function fetchViaProxy(targetUrl, ms=15000) {
+let _proxyHealth={state:'unknown',idx:-1}; // 'ok' (primary), 'degraded' (fallback used), 'down'
+// fmt: jina return format ('text' for JSON, 'html' for pages). validate: optional
+// predicate the returned text must satisfy (rejects garbage like a proxy's own homepage).
+async function fetchViaProxy(targetUrl, ms=15000, fmt, validate) {
   let last;
   for (let i=0;i<PROXIES.length;i++) {
     try {
+      const spec=PROXIES[i](targetUrl, fmt);
+      const url=typeof spec==='string'?spec:spec.url;
+      const opts={signal:undefined};
       const ctrl=new AbortController(), tid=setTimeout(()=>ctrl.abort(),ms);
+      opts.signal=ctrl.signal;
+      if(typeof spec==='object'&&spec.headers) opts.headers=spec.headers;
       let res;
-      try { res=await fetch(PROXIES[i](targetUrl),{signal:ctrl.signal}); }
+      try { res=await fetch(url,opts); }
       finally { clearTimeout(tid); }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       let txt=await res.text();
-      // allorigins /get returns JSON {contents:'<html>...'}
-      if (txt&&txt.startsWith('{"contents"')) {
-        try { txt=JSON.parse(txt).contents||''; } catch(_){}
-      }
-      if (txt&&txt.length>200){ _proxyHealth={state:i===0?'ok':'degraded',idx:i}; updateProxyIndicator(); return txt; }
-      throw new Error('Empty response');
+      if (txt&&txt.startsWith('{"contents"')) { try { txt=JSON.parse(txt).contents||''; } catch(_){} }
+      if (txt&&txt.length>200&&(!validate||validate(txt))){ _proxyHealth={state:i===0?'ok':'degraded',idx:i}; updateProxyIndicator(); return txt; }
+      throw new Error('invalid/empty response');
     } catch(e){ last=e; }
   }
   _proxyHealth={state:'down',idx:-1}; updateProxyIndicator();
@@ -1857,7 +1865,7 @@ function parseDSEX(html){
 }
 async function fetchAndSaveDSEX(){
   try{
-    const html=await fetchViaProxy('https://www.dsebd.org/',12000);
+    const html=await fetchViaProxy('https://old.dsebd.org/',12000);
     const val=parseDSEX(html);
     if(val){
       const date=new Date().toISOString().split('T')[0];
@@ -2374,7 +2382,7 @@ let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, wa
 function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
 
 // Bump this on every deploy — the auto-updater compares it against the live file.
-const APP_VERSION='2026-10-25.1';
+const APP_VERSION='2026-10-25.2';
 
 // Manual escape hatch (data menu): unregister SWs, clear caches, hard reload fresh.
 function hardRefresh(){
@@ -2546,39 +2554,66 @@ async function syncFromDSE(){
   if(isSyncing)return;
   isSyncing=true; setLoading(true); toast('Fetching latest prices…','info');
   try {
-    // Try live prices first; if market closed (all zeros), fall back to last close
-    let html=await fetchViaProxy(DSE_PRICE,15000);
-    let {updated,matched,notFound}=parsePrices(html);
-    let priceLabel='live';
-    if(updated===0){
-      // Market closed — fetch last closing prices instead
-      toast('Market closed — fetching last closing prices…','info');
-      html=await fetchViaProxy(DSE_CLOSE,15000);
-      ({updated,matched,notFound}=parsePrices(html));
-      priceLabel='close';
+    let result=null, usedApi=false;
+    // Primary: dse.com.bd JSON API — fast, clean, gives price AND sector
+    try {
+      const txt=await fetchViaProxy(DSE_API,15000,'text',t=>t.includes('"rows"')&&t.includes('"code"'));
+      const m=txt.match(/\{[\s\S]*"rows"[\s\S]*\}/);
+      const data=JSON.parse(m?m[0]:txt);
+      if(data&&Array.isArray(data.rows)&&data.rows.length>50){ result=applyQuotes(data.rows); usedApi=true; }
+    } catch(apiErr){ console.warn('DSE API failed, falling back to HTML scrape:',apiErr); }
+    // Fallback: scrape the archived old.dsebd.org HTML
+    if(!result){
+      let html=await fetchViaProxy(DSE_PRICE,20000,'html');
+      result=parsePrices(html);
+      if(result.updated===0){
+        toast('Fetching last closing prices…','info');
+        html=await fetchViaProxy(DSE_CLOSE,20000,'html');
+        result=parsePrices(html);
+      }
     }
-    const missing=getSymbols().filter(s=>!state.sectorMap[s]);
-    let sf=0;
-    for(const sym of missing){
-      const s=await fetchOneSector(sym); if(s){state.sectorMap[sym]=s;sf++;}
-      await new Promise(r=>setTimeout(r,300));
+    let {updated,matched,notFound}=result;
+    // API already carries sectors; only scrape sectors on the HTML fallback path
+    if(!usedApi){
+      const missing=getSymbols().filter(s=>!state.sectorMap[s]);
+      for(const sym of missing){ const s=await fetchOneSector(sym); if(s)state.sectorMap[sym]=s; await new Promise(r=>setTimeout(r,250)); }
     }
     state.lastSync=new Date().toISOString();
     savePortfolioSnapshot();
     fetchAndSaveDSEX();
     save(); checkPriceAlerts(); renderInvesting(); render();
-    const label=priceLabel==='close'?'Last close':'Live';
-    document.getElementById('sync-status').textContent=`${label} prices · ${new Date(state.lastSync).toLocaleTimeString()}`;
+    document.getElementById('sync-status').textContent=`Prices · ${new Date(state.lastSync).toLocaleTimeString()}`;
     if(updated>0){
       const missedMsg=notFound.length?`\n⚠️ Not found: ${notFound.join(', ')}`:'';
-      toast(`✅ ${updated} ${label.toLowerCase()} price${updated>1?'s':''} updated${matched.map(m=>`\n• ${m.sym}: ৳${m.price}`).join('')}${missedMsg}`,'success');
+      toast(`✅ ${updated} price${updated>1?'s':''} updated${matched.slice(0,12).map(m=>`\n• ${m.sym}: ৳${m.price}`).join('')}${missedMsg}`,'success');
     } else {
       showSyncError(notFound);
     }
   } catch(e){
-    toast(`❌ Sync failed: ${e.message||'Network error'}\nCheck internet connection and try again.`,'error');
+    toast(`❌ Sync failed: ${e.message||'Network error'}\nCheck your connection and try again.`,'error');
   }
   finally{ isSyncing=false; setLoading(false); }
+}
+
+// Apply the dse.com.bd JSON rows: update prices (held + watchlist), fill sectors.
+function applyQuotes(rows){
+  const map={};
+  (rows||[]).forEach(r=>{ if(r&&r.code) map[String(r.code).toUpperCase()]=r; });
+  const allSyms=[...new Set([...getSymbols(),...(state.watchlist||[]).map(w=>w.symbol)])];
+  const matched=[],notFound=[];
+  const today=new Date().toISOString().split('T')[0];
+  state.prevPrices=state.prevPrices||{};
+  allSyms.forEach(s=>{
+    const q=map[String(s).toUpperCase()];
+    const price=q&&+q.price>0?+q.price:0;
+    if(price>0){
+      const old=state.currentPrices[s];
+      if(old>0&&(state.prevPrices[s]?.date)!==today) state.prevPrices[s]={price:old,date:today};
+      state.currentPrices[s]=price; matched.push({sym:s,price});
+      if(q.sector&&!state.sectorMap[s]) state.sectorMap[s]=q.sector; // sector comes free
+    } else notFound.push(s);
+  });
+  return{updated:matched.length,matched,notFound};
 }
 
 function showSyncError(notFound){
