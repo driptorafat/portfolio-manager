@@ -706,6 +706,15 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <button class="mini-btn" onclick="snoozeBackupNudge()">Later</button>
   </div>
   <div id="proxy-indicator" style="display:none;align-items:center;gap:6px;font-size:12px;margin-bottom:14px"></div>
+  <div id="nodata-hint" style="display:none;background:var(--surface2);border:1px solid var(--accent2);border-radius:12px;padding:14px 16px;margin-bottom:16px">
+    <div style="font-weight:700;font-size:14px;margin-bottom:6px">📱 এই ডিভাইসে এখনো কোনো ডেটা নেই</div>
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:10px">আপনার ডেটা প্রতিটা ডিভাইসে আলাদা থাকে। অন্য ডিভাইসের ডেটা এখানে আনতে Cloud-এ sign in করুন — একই Google অ্যাকাউন্ট দিয়ে।</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn-primary" style="padding:8px 14px;font-size:13px;width:auto" onclick="signInWithGoogle()">☁️ Sign in &amp; load my data</button>
+      <button class="mini-btn" style="padding:8px 12px" onclick="importData()">⬆️ Import backup file</button>
+    </div>
+    <div id="nodata-hint-extra" style="font-size:11px;color:var(--muted);margin-top:8px"></div>
+  </div>
 
   <!-- ══ DASHBOARD ══ -->
   <div id="page-dashboard" class="page active">
@@ -2428,7 +2437,7 @@ let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, wa
 function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
 
 // Bump this on every deploy — the auto-updater compares it against the live file.
-const APP_VERSION='2026-10-25.4';
+const APP_VERSION='2026-10-25.5';
 
 // Manual escape hatch (data menu): unregister SWs, clear caches, hard reload fresh.
 function hardRefresh(){
@@ -2442,6 +2451,11 @@ function hardRefresh(){
 }
 // Cloud sync globals
 let _fbAuth=null,_fbDb=null,_fbUser=null,_saveTimer=null,_cloudLoading=false;
+// True only once this device has successfully read (or first-seeded) the cloud
+// copy. Until then auto-save never pushes, so a fresh/empty device can't wipe cloud data.
+let _cloudReady=false;
+// Snapshot of the default state shape, used to backfill keys missing from older cloud data
+const STATE_DEFAULTS=JSON.parse(JSON.stringify(state));
 let formType='buy', formPurpose='investing', editingId=null;
 let currentTab='dashboard', tradeFilter='all', histFilter='all', isSyncing=false;
 
@@ -2453,7 +2467,7 @@ function getPortfolioList() {
 function getStateKey(id) { const pid = id || getActivePortfolioId(); return pid === 'default' ? 'pm_v2' : 'pm_v2_' + pid; }
 function save(){ localStorage.setItem(getStateKey(),JSON.stringify(state)); scheduleCloudSave(); }
 function scheduleCloudSave(){
-  if(!_fbUser||_cloudLoading)return;
+  if(!_fbUser||_cloudLoading||!_cloudReady)return;
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(pushToCloud,2500);
 }
@@ -3163,6 +3177,7 @@ function render(){
   if(currentTab==='reports'&&reportType!=='pnl'){
     const out=document.getElementById('rpt-output'); if(out&&!out.innerHTML.trim()) generateReport();
   }
+  renderNoDataHint();
 }
 
 // ─── MERGED TABS: Holdings (Investing+Trading) & Income (Dividends+SIP) ───────
@@ -4597,6 +4612,26 @@ function checkBackupNudge(){
     el.style.display='flex';
   } else { el.style.display='none'; }
 }
+// Empty device (e.g. a phone or a freshly installed home-screen app): explain how to get data in
+function renderNoDataHint(){
+  const el=document.getElementById('nodata-hint'); if(!el) return;
+  const empty=!(state.transactions||[]).length&&!(state.sips||[]).length&&!(state.cashLedger||[]).length&&!(state.assets||[]).length;
+  if(!empty){ el.style.display='none'; return; }
+  el.style.display='block';
+  const nudge=document.getElementById('backup-nudge'); if(nudge) nudge.style.display='none'; // nothing to back up yet
+  const btn=el.querySelector('.btn-primary');
+  const extra=document.getElementById('nodata-hint-extra');
+  const standalone=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+  if(_fbUser){
+    btn.style.display='none';
+    extra.textContent=`Signed in as ${_fbUser.email||'your account'}, but the cloud copy is empty for this portfolio. On the device that has your data, open ☁️ → "Push local → cloud", then come back here and choose ☁️ → "Pull latest from cloud".`;
+  } else {
+    btn.style.display='';
+    extra.textContent=standalone&&/iphone|ipad|ipod/i.test(navigator.userAgent)
+      ? 'iPhone-এর home-screen অ্যাপের storage Safari থেকে আলাদা — তাই এখানে আলাদা করে একবার sign in করতে হবে।'
+      : '';
+  }
+}
 function snoozeBackupNudge(){ sessionStorage.setItem('pm_backup_snoozed','1'); document.getElementById('backup-nudge').style.display='none'; }
 
 // Hidden invariant checks — surface silent data/math regressions in the console
@@ -5140,25 +5175,43 @@ function initFirebase(){
         _fbUser=user;
         updateCloudUI();
         if(user) loadFromCloud();
+        renderNoDataHint();
       });
+      // Coming back from a redirect sign-in: surface any error
+      if(sessionStorage.getItem('pm_auth_redirect')){
+        sessionStorage.removeItem('pm_auth_redirect');
+        _fbAuth.getRedirectResult().catch(e=>toast('Sign in failed: '+(e.message||e.code)+'\nTry opening the site in Chrome/Safari (not the home-screen app) to sign in.','error'));
+      }
       resolve();
     };
     tryInit();
   });
 }
 
+// Popup works in normal desktop/mobile browser tabs. Where the environment
+// blocks it (home-screen app, in-app browsers, popup blockers) fall back to
+// a full-page redirect; the result is picked up in initFirebase on return.
 function signInWithGoogle(){
   initFirebase().then(()=>{
     const wait=()=>{
       if(!_fbAuth){setTimeout(wait,100);return;}
       const p=new firebase.auth.GoogleAuthProvider();
-      _fbAuth.signInWithPopup(p).catch(e=>toast('Sign in failed: '+e.message,'error'));
+      p.setCustomParameters({prompt:'select_account'});
+      const standalone=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+      const useRedirect=()=>{ sessionStorage.setItem('pm_auth_redirect','1'); _fbAuth.signInWithRedirect(p).catch(e=>toast('Sign in failed: '+e.message,'error')); };
+      if(standalone) return useRedirect();
+      _fbAuth.signInWithPopup(p).catch(e=>{
+        const fallback=['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/web-storage-unsupported','auth/internal-error'];
+        if(fallback.includes(e.code)) useRedirect();
+        else if(e.code!=='auth/popup-closed-by-user'&&e.code!=='auth/cancelled-popup-request') toast('Sign in failed: '+e.message,'error');
+      });
     };
     wait();
   });
 }
 
 function signOutUser(){
+  _cloudReady=false;
   if(_fbAuth) _fbAuth.signOut().then(()=>{ updateCloudUI(); toast('Signed out from cloud','info'); });
   document.getElementById('cloud-menu').classList.remove('open');
 }
@@ -5228,20 +5281,22 @@ async function loadFromCloud(){
   setCloudDot('syncing');
   const sl=document.getElementById('cloud-status-line');
   if(sl) sl.textContent='⏳ Loading…';
+  _cloudLoading=true; // block auto-save until the cloud copy is in
   try{
     const snap=await getCloudDocRef().get();
     if(snap.exists){
-      _cloudLoading=true;
       const loaded=JSON.parse(snap.data().data||'{}');
-      // merge: prefer cloud data but keep any freshly fetched prices
+      // merge: prefer cloud data but keep any freshly fetched prices;
+      // backfill keys added in newer versions (assets, commission, …)
       const mergedPrices=Object.assign({},loaded.currentPrices||{},state.currentPrices||{});
-      state=Object.assign({},loaded,{currentPrices:mergedPrices});
+      state=Object.assign({},JSON.parse(JSON.stringify(STATE_DEFAULTS)),loaded,{currentPrices:mergedPrices});
       localStorage.setItem(getStateKey(),JSON.stringify(state));
-      _cloudLoading=false;
-      render();
-      toast('☁️ Portfolio loaded from cloud!','success');
+      _cloudLoading=false; _cloudReady=true;
+      render(); renderNoDataHint();
+      toast(`☁️ Portfolio loaded from cloud — ${(state.transactions||[]).length} trades`,'success');
     } else {
-      // First sign-in: push local data up
+      // First sign-in: no cloud copy yet, seed it from this device
+      _cloudLoading=false; _cloudReady=true;
       await pushToCloud();
     }
     setCloudDot('synced');
@@ -5498,6 +5553,9 @@ function doSwitchPortfolio(pid) {
   if(state.lastSync) document.getElementById('sync-status').textContent='Last sync: '+new Date(state.lastSync).toLocaleTimeString();
   else document.getElementById('sync-status').textContent='';
   toast('Switched to: ' + (getPortfolioList().find(p=>p.id===pid)||{name:pid}).name, 'success');
+  // Each portfolio has its own cloud doc — read it before auto-save may write it
+  _cloudReady=false; clearTimeout(_saveTimer);
+  if(_fbUser) loadFromCloud();
 }
 
 function openCreatePortfolioModal() {
