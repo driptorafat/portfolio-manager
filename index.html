@@ -41,6 +41,10 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .nav-tab{padding:6px 14px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
 .nav-tab:hover{background:var(--surface2);color:var(--text)}
 .nav-tab.active{background:var(--accent);color:#fff}
+.seg-toggle{display:inline-flex;gap:4px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:18px}
+.seg-btn{padding:7px 16px;border:none;background:transparent;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;border-radius:7px;transition:all .15s}
+.seg-btn:hover{color:var(--text)}
+.seg-btn.active{background:var(--accent);color:#fff}
 .topbar-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}
 .btn-sync{display:flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;background:var(--surface2);color:var(--muted);border:1px solid var(--border);font-size:13px;font-weight:500;cursor:pointer;transition:all .2s;white-space:nowrap}
 .btn-sync:hover:not(:disabled){border-color:var(--accent2);color:var(--accent2)}
@@ -609,12 +613,10 @@ tbody td{padding:11px 14px;vertical-align:middle}
   </div>
   <div class="nav-tabs">
     <button class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</button>
-    <button class="nav-tab" onclick="switchTab('trading')">Trading</button>
-    <button class="nav-tab" onclick="switchTab('investing')">Investing</button>
-    <button class="nav-tab" onclick="switchTab('dividends')">💰 Dividends</button>
-    <button class="nav-tab" onclick="switchTab('sip')">🔁 SIP</button>
-    <button class="nav-tab" onclick="switchTab('history')">History</button>
+    <button class="nav-tab" onclick="switchTab('holdings')">📊 Holdings</button>
+    <button class="nav-tab" onclick="switchTab('income')">💰 Income</button>
     <button class="nav-tab" onclick="switchTab('watchlist')">👁 Watchlist</button>
+    <button class="nav-tab" onclick="switchTab('history')">History</button>
     <button class="nav-tab" onclick="switchTab('reports')">📄 Reports</button>
   </div>
   <div class="topbar-actions">
@@ -819,7 +821,29 @@ tbody td{padding:11px 14px;vertical-align:middle}
     </div>
   </div>
 
-  <!-- ══ TRADING ══ -->
+  <!-- ══ HOLDINGS (Investing + Trading merged) ══ -->
+  <div id="page-holdings" class="page">
+    <div class="seg-toggle" id="holdings-seg">
+      <button class="seg-btn active" onclick="setHoldingsView('all')">All</button>
+      <button class="seg-btn" onclick="setHoldingsView('investing')">📈 Investing</button>
+      <button class="seg-btn" onclick="setHoldingsView('trading')">⚡ Trading</button>
+    </div>
+    <div id="hold-investing-sec"></div>
+    <div id="hold-trading-sec" style="margin-top:22px"></div>
+  </div>
+
+  <!-- ══ INCOME (Dividends + SIP merged) ══ -->
+  <div id="page-income" class="page">
+    <div class="seg-toggle" id="income-seg">
+      <button class="seg-btn active" onclick="setIncomeView('all')">All</button>
+      <button class="seg-btn" onclick="setIncomeView('dividends')">💰 Dividends</button>
+      <button class="seg-btn" onclick="setIncomeView('sip')">🔁 SIP</button>
+    </div>
+    <div id="inc-dividends-sec"></div>
+    <div id="inc-sip-sec" style="margin-top:22px"></div>
+  </div>
+
+  <!-- ══ TRADING (moved into Holdings on load) ══ -->
   <div id="page-trading" class="page">
     <div class="summary-grid" id="trading-summary"></div>
     <div class="filter-bar">
@@ -845,7 +869,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <div class="summary-grid" id="invest-summary"></div>
     <div class="section-head">
       <div class="section-title">Investment Portfolio</div>
-      <button class="btn-secondary" style="font-size:12px;padding:6px 14px;background:rgba(99,102,241,.12);color:var(--accent2);border:1px solid rgba(99,102,241,.25);border-radius:8px;cursor:pointer" onclick="switchTab('dividends')">💰 View Dividends →</button>
+      <button class="btn-secondary" style="font-size:12px;padding:6px 14px;background:rgba(99,102,241,.12);color:var(--accent2);border:1px solid rgba(99,102,241,.25);border-radius:8px;cursor:pointer" onclick="switchTab('income')">💰 View Dividends →</button>
     </div>
     <div class="table-wrap" id="investing-table-wrap">
       <table>
@@ -1001,29 +1025,21 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
     Dash
   </button>
-  <button class="mobile-tab" onclick="switchTab('trading')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/></svg>
-    Trading
-  </button>
-  <button class="mobile-tab" onclick="switchTab('investing')">
+  <button class="mobile-tab" onclick="switchTab('holdings')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-    Invest
+    Holdings
   </button>
-  <button class="mobile-tab" onclick="switchTab('dividends')">
+  <button class="mobile-tab" onclick="switchTab('income')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-    Divs
-  </button>
-  <button class="mobile-tab" onclick="switchTab('sip')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16l4-6 4 3 5-8"/></svg>
-    SIP
-  </button>
-  <button class="mobile-tab" onclick="switchTab('history')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></svg>
-    History
+    Income
   </button>
   <button class="mobile-tab" onclick="switchTab('watchlist')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
     Watch
+  </button>
+  <button class="mobile-tab" onclick="switchTab('history')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="12 8 12 12 14 14"/><path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/></svg>
+    History
   </button>
   <button class="mobile-tab" onclick="switchTab('reports')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -2382,7 +2398,7 @@ let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, wa
 function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
 
 // Bump this on every deploy — the auto-updater compares it against the live file.
-const APP_VERSION='2026-10-25.2';
+const APP_VERSION='2026-10-25.3';
 
 // Manual escape hatch (data menu): unregister SWs, clear caches, hard reload fresh.
 function hardRefresh(){
@@ -2427,7 +2443,7 @@ function switchTab(tab) {
   currentTab=tab;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+tab).classList.add('active');
-  const tabs=['dashboard','trading','investing','dividends','sip','history','watchlist','reports'];
+  const tabs=['dashboard','holdings','income','watchlist','history','reports'];
   document.querySelectorAll('.nav-tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   document.querySelectorAll('.mobile-tab').forEach((t,i)=>t.classList.toggle('active',tabs[i]===tab));
   render();
@@ -3066,12 +3082,37 @@ function deleteGoal(id){
 // ─── RENDER ───────────────────────────────────────────────────────────────────
 function render(){
   if(currentTab==='dashboard')  renderDashboard();
-  if(currentTab==='trading')    renderTrading();
-  if(currentTab==='investing')  renderInvesting();
-  if(currentTab==='dividends')  renderDividends();
-  if(currentTab==='sip')        renderSIP();
+  if(currentTab==='holdings')   renderHoldings();
+  if(currentTab==='income')     renderIncome();
   if(currentTab==='history')    renderHistory();
   if(currentTab==='watchlist')  renderWatchlist();
+}
+
+// ─── MERGED TABS: Holdings (Investing+Trading) & Income (Dividends+SIP) ───────
+let holdingsView='all', incomeView='all';
+function initMergedLayout(){
+  const map=[['hold-investing-sec','page-investing'],['hold-trading-sec','page-trading'],
+             ['inc-dividends-sec','page-dividends'],['inc-sip-sec','page-sip']];
+  map.forEach(([dest,src])=>{
+    const d=document.getElementById(dest), s=document.getElementById(src);
+    if(d&&s){ while(s.firstChild) d.appendChild(s.firstChild); s.remove(); }
+  });
+}
+function renderHoldings(){ renderInvesting(); renderTrading(); applyHoldingsView(); }
+function setHoldingsView(v){ holdingsView=v; applyHoldingsView(); }
+function applyHoldingsView(){
+  const inv=document.getElementById('hold-investing-sec'), trd=document.getElementById('hold-trading-sec');
+  if(inv) inv.style.display=holdingsView==='trading'?'none':'';
+  if(trd) trd.style.display=holdingsView==='investing'?'none':'';
+  document.querySelectorAll('#holdings-seg .seg-btn').forEach((b,i)=>b.classList.toggle('active',['all','investing','trading'][i]===holdingsView));
+}
+function renderIncome(){ renderDividends(); renderSIP(); applyIncomeView(); }
+function setIncomeView(v){ incomeView=v; applyIncomeView(); }
+function applyIncomeView(){
+  const d=document.getElementById('inc-dividends-sec'), s=document.getElementById('inc-sip-sec');
+  if(d) d.style.display=incomeView==='sip'?'none':'';
+  if(s) s.style.display=incomeView==='dividends'?'none':'';
+  document.querySelectorAll('#income-seg .seg-btn').forEach((b,i)=>b.classList.toggle('active',['all','dividends','sip'][i]===incomeView));
 }
 
 function renderDashboard(){
@@ -3808,7 +3849,7 @@ function renderInvesting(){
     const sec = state.sectorMap[sym]||''; const sc = sec ? getSectorColor(sec,0) : 'var(--border)';
     const priceAuto = state.currentPrices[sym] ? `<span class="price-auto">DSE ✓</span>` : '';
     const divMark = ds.count > 0
-      ? `<span style="font-size:10px;background:rgba(34,197,94,.15);color:var(--green);padding:2px 6px;border-radius:4px;font-weight:700;white-space:nowrap;cursor:pointer" onclick="switchTab('dividends')" title="View dividend details">💰 Div ↗</span>` : '';
+      ? `<span style="font-size:10px;background:rgba(34,197,94,.15);color:var(--green);padding:2px 6px;border-radius:4px;font-weight:700;white-space:nowrap;cursor:pointer" onclick="switchTab('income')" title="View dividend details">💰 Div ↗</span>` : '';
     // Stop loss based on actual avg buy price (no dividend adjustment)
     const avgI = d.avgBuy > 0 ? d.avgBuy : 0;
     const slI  = (state.stopLoss||{})[sym]!=null ? (state.stopLoss||{})[sym] : avgI ? +(avgI*0.92).toFixed(2) : 0;
@@ -4013,15 +4054,14 @@ function setHistoryFilter(f,el){histFilter=f;document.querySelectorAll('#page-hi
 
 // ─── UPDATES ──────────────────────────────────────────────────────────────────
 function updatePrice(sym,val){
-  const p=parseFloat(val); if(p>0){state.currentPrices[sym]=p;save();renderInvesting();if(currentTab==='dashboard')renderDashboard();if(currentTab==='trading')renderTrading();}
+  const p=parseFloat(val); if(p>0){state.currentPrices[sym]=p;save();if(currentTab==='holdings')renderHoldings();else renderInvesting();if(currentTab==='dashboard')renderDashboard();}
 }
 function updateStopLoss(sym,val){
   const p=parseFloat(val);
   state.stopLoss=state.stopLoss||{};
   if(p>0){state.stopLoss[sym]=p;}else{delete state.stopLoss[sym];}
   save();
-  if(currentTab==='trading')   renderTrading();
-  if(currentTab==='investing') renderInvesting();
+  if(currentTab==='holdings')  renderHoldings();
   if(currentTab==='dashboard') renderDashboard();
 }
 function updateSector(sym,val){
@@ -4029,7 +4069,7 @@ function updateSector(sym,val){
   if(v)state.sectorMap[sym]=v; else delete state.sectorMap[sym];
   save();
   if(currentTab==='dashboard')renderDashboard();
-  if(currentTab==='trading')renderTrading();
+  if(currentTab==='holdings')renderHoldings();
   if(currentTab==='history')renderHistory();
 }
 
@@ -4346,14 +4386,13 @@ function submitDividend(){
     bonusPct, bonusShares, bonusSharesHeld
   });
   save(); closeDivModal();
-  if(currentTab==='dividends') renderDividends(); else renderInvesting();
+  if(currentTab==='income') renderIncome(); else if(currentTab==='holdings') renderHoldings();
   toast(`Dividend added for ${symbol}` + (cashPct&&bonusPct?' (Cash + Bonus)':cashPct?' (Cash)':' (Bonus)'),'success');
 }
 function removeDividend(id){
   state.dividends = (state.dividends||[]).filter(d => d.id !== id);
   save();
-  if(currentTab==='dividends') renderDividends();
-  else renderInvesting();
+  if(currentTab==='income') renderIncome(); else if(currentTab==='holdings') renderHoldings();
   toast('Dividend removed','success');
 }
 
@@ -5849,6 +5888,7 @@ document.getElementById('goal-modal').addEventListener('click',e=>{if(e.target==
 document.getElementById('csv-import-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
 document.getElementById('portfolio-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
 initPortfolios();
+initMergedLayout();
 load();
 // Save snapshot on load if prices exist
 if(Object.keys(state.currentPrices||{}).length>0) savePortfolioSnapshot();
