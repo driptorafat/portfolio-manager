@@ -648,6 +648,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <div class="theme-opt" onclick="openDSEXModal()">📈&nbsp; Add DSEX History</div>
         <div class="theme-opt" onclick="openCommissionModal()">🧾&nbsp; Brokerage Commission</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
+        <div class="theme-opt" onclick="installApp()">📲&nbsp; Install App</div>
         <div class="theme-opt" onclick="hardRefresh()">🔄&nbsp; Clear Cache &amp; Reload</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
         <div class="theme-opt" onclick="clearAllData()" style="color:var(--red)">🗑️&nbsp; Clear All Data</div>
@@ -718,7 +719,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <!-- Net Worth & Goals -->
     <div class="dash-holdings-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px" data-widget="planning">
       <div class="chart-card">
-        <div class="chart-card-title"><span>💰 Net Worth</span><button class="mini-btn" onclick="openCashModal()">💵 Manage Cash</button></div>
+        <div class="chart-card-title"><span>💰 Net Worth</span><span style="display:flex;gap:6px"><button class="mini-btn" onclick="openAssetsModal()">🏦 Assets</button><button class="mini-btn" onclick="openCashModal()">💵 Cash</button></span></div>
         <div id="networth-widget"></div>
       </div>
       <div class="chart-card">
@@ -904,7 +905,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <thead><tr>
           <th>Symbol</th><th>Original Qty</th><th>Bonus Shares</th><th>Total Qty</th>
           <th>Cash Income</th><th>Cash / Share</th><th>Eff. Avg Buy</th>
-          <th>Market Price</th><th>Adj. Value</th><th>Div Yield</th>
+          <th>Market Price</th><th>Adj. Value</th><th>Yield on Cost</th>
         </tr></thead>
         <tbody id="div-per-symbol-tbody"></tbody>
       </table>
@@ -948,16 +949,23 @@ tbody td{padding:11px 14px;vertical-align:middle}
   <div id="page-reports" class="page">
     <div class="report-cfg">
       <div class="rpt-group">
-        <label>Report Type</label>
-        <div class="rpt-type-btns">
-          <button class="rpt-type-btn active" id="rpt-btn-statement" onclick="setReportType('statement')">📋 Portfolio Statement</button>
-          <button class="rpt-type-btn" id="rpt-btn-pnl" onclick="setReportType('pnl')">📊 Profit &amp; Loss</button>
-          <button class="rpt-type-btn" id="rpt-btn-annual" onclick="setReportType('annual')">📅 Annual Summary</button>
-          <button class="rpt-type-btn" id="rpt-btn-tax" onclick="setReportType('tax')">🧾 Tax Report</button>
-          <button class="rpt-type-btn" id="rpt-btn-journal" onclick="setReportType('journal')">📓 Trade Journal</button>
-          <button class="rpt-type-btn" id="rpt-btn-risk" onclick="setReportType('risk')">📉 Risk Analytics</button>
-          <button class="rpt-type-btn" id="rpt-btn-rebalance" onclick="setReportType('rebalance')">⚖️ Rebalancing</button>
-        </div>
+        <label>Report</label>
+        <select id="rpt-select" onchange="setReportType(this.value,true)"
+          style="min-width:240px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px;outline:none">
+          <optgroup label="Performance">
+            <option value="statement">📋 Portfolio Statement</option>
+            <option value="pnl">📊 Profit &amp; Loss (date range)</option>
+            <option value="annual">📅 Annual Summary</option>
+          </optgroup>
+          <optgroup label="Tax &amp; Review">
+            <option value="tax">🧾 Tax Report</option>
+            <option value="journal">📓 Trade Journal</option>
+          </optgroup>
+          <optgroup label="Planning">
+            <option value="risk">📉 Risk Analytics</option>
+            <option value="rebalance">⚖️ Rebalancing</option>
+          </optgroup>
+        </select>
       </div>
       <div class="rpt-group" id="rpt-period-row" style="display:none">
         <label>Period</label>
@@ -1596,6 +1604,28 @@ tbody td{padding:11px 14px;vertical-align:middle}
     <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600">History</div>
     <div id="cash-history" style="max-height:200px;overflow-y:auto"></div>
     <div class="modal-actions"><button class="btn-cancel" onclick="closeCashModal()">Close</button></div>
+  </div>
+</div>
+
+<!-- OTHER ASSETS MODAL -->
+<div class="modal-overlay" id="assets-modal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title">🏦 Other Assets</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Track everything else in your net worth — FDR, DPS, সঞ্চয়পত্র, gold, property and more. Enter the current value; update it whenever it changes.</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Type *</label>
+        <select id="asset-type" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:9px 11px;font-size:13px;outline:none">
+          <option>FDR</option><option>DPS</option><option>Sanchayapatra</option><option>Gold</option><option>Savings</option><option>Real Estate</option><option>Crypto</option><option>Other</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Current Value (৳) *</label><input id="asset-value" type="number" step="any" min="0" placeholder="0.00"/></div>
+    </div>
+    <div class="form-group"><label>Name / Note</label><input id="asset-name" placeholder="e.g. DBBL 3-year FDR @ 8.5%"/></div>
+    <button class="btn-primary" style="width:100%;margin-bottom:14px" onclick="submitAsset()">Add Asset</button>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;font-weight:600">Your Assets</div>
+    <div id="assets-list" style="max-height:220px;overflow-y:auto"></div>
+    <div class="modal-actions"><button class="btn-cancel" onclick="closeAssetsModal()">Close</button></div>
   </div>
 </div>
 
@@ -2392,13 +2422,13 @@ const FALLBACK_COLORS=['#6366f1','#22c55e','#f59e0b','#ef4444','#06b6d4','#8b5cf
 function getSectorColor(s,i){ return SECTOR_COLORS[s]||FALLBACK_COLORS[i%FALLBACK_COLORS.length]; }
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
-let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{}, prevPrices:{}, sips:[], cashLedger:[], goals:[], lastBackupAt:null, assetTargets:{}, uiPrefs:{returnsOpen:false,hiddenWidgets:[]}, commissionOn:true, commissionRate:0.4 };
+let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, watchlist:[], dividends:[], stopLoss:{}, portfolioSnapshots:[], priceAlerts:[], stockNotes:{}, splits:[], dsexSnapshots:[], targetAllocations:{}, prevPrices:{}, sips:[], cashLedger:[], goals:[], lastBackupAt:null, assetTargets:{}, uiPrefs:{returnsOpen:false,hiddenWidgets:[]}, commissionOn:true, commissionRate:0.4, assets:[] };
 // Brokerage commission as a fraction (e.g. 0.004 for 0.4%). Added to buy cost,
 // deducted from sell proceeds. 0 when disabled.
 function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
 
 // Bump this on every deploy — the auto-updater compares it against the live file.
-const APP_VERSION='2026-10-25.3';
+const APP_VERSION='2026-10-25.4';
 
 // Manual escape hatch (data menu): unregister SWs, clear caches, hard reload fresh.
 function hardRefresh(){
@@ -2934,22 +2964,29 @@ function applyWidgetVisibility(){
 
 // ─── CASH & NET WORTH ────────────────────────────────────────────────────────
 function cashBalance(){ return (state.cashLedger||[]).reduce((s,e)=>s+(e.type==='deposit'?e.amount:-e.amount),0); }
+function otherAssetsTotal(){ return (state.assets||[]).reduce((s,a)=>s+(+a.value||0),0); }
 function getNetWorth(){
   let shares=0; getSymbols().forEach(sym=>{ shares+=shareMarketValue(sym); });
   let sip=0; (state.sips||[]).forEach(s=>{ const st=sipStats(s); sip+=(st.value!==null?st.value:st.invested); });
   const cash=cashBalance();
-  return {cash,shares,sip,total:cash+shares+sip};
+  const other=otherAssetsTotal();
+  const byType={}; (state.assets||[]).forEach(a=>{ byType[a.type]=(byType[a.type]||0)+(+a.value||0); });
+  return {cash,shares,sip,other,byType,total:cash+shares+sip+other};
 }
 function renderNetWorth(){
   const el=document.getElementById('networth-widget'); if(!el)return;
   const nw=getNetWorth();
   const row=(lbl,val)=>`<div class="nw-row"><span style="color:var(--muted)">${lbl}</span><span style="font-weight:600">${fmt(val)}</span></div>`;
+  const ASSET_ICONS={'FDR':'🏦','DPS':'🗓️','Sanchayapatra':'🧾','Gold':'🥇','Savings':'💳','Real Estate':'🏠','Crypto':'🪙','Other':'📦'};
+  const assetRows=Object.entries(nw.byType||{}).sort((a,b)=>b[1]-a[1])
+    .map(([t,v])=>row(`${ASSET_ICONS[t]||'📦'} ${t}`,v)).join('');
   el.innerHTML=`
     <div style="font-size:25px;font-weight:800;margin-bottom:4px">${fmt(nw.total)}</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Total net worth · cash + shares + SIP</div>
-    ${row('💵 Cash',nw.cash)}
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px">Total net worth · shares + SIP + cash + assets</div>
     ${row('📈 Shares (market value)',nw.shares)}
-    ${row('🔁 SIP / Mutual funds',nw.sip)}`;
+    ${row('🔁 SIP / Mutual funds',nw.sip)}
+    ${row('💵 Cash',nw.cash)}
+    ${assetRows}`;
 }
 let cashType='deposit';
 function openCashModal(){
@@ -2995,6 +3032,43 @@ function renderCashHistory(){
       <span style="color:var(--muted);font-size:11px;margin-left:8px">${fmtDate(e.date)}${e.note?' · '+e.note:''}</span></div>
     <button onclick="deleteCashEntry('${e.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px">✕</button>
   </div>`).join('');
+}
+
+// ─── OTHER ASSETS (FDR / DPS / Sanchayapatra / Gold / …) ─────────────────────
+function openAssetsModal(){
+  document.getElementById('asset-type').value='FDR';
+  document.getElementById('asset-value').value='';
+  document.getElementById('asset-name').value='';
+  renderAssetsList();
+  document.getElementById('assets-modal').classList.add('open');
+}
+function closeAssetsModal(){ document.getElementById('assets-modal').classList.remove('open'); }
+function submitAsset(){
+  const type=document.getElementById('asset-type').value;
+  const value=parseFloat(document.getElementById('asset-value').value);
+  const name=document.getElementById('asset-name').value.trim();
+  if(!(value>0)) return toast('Enter a valid value','error');
+  state.assets=state.assets||[];
+  state.assets.push({id:'as_'+Date.now(),type,value,name,date:new Date().toISOString().split('T')[0]});
+  save();
+  document.getElementById('asset-value').value=''; document.getElementById('asset-name').value='';
+  renderAssetsList(); if(currentTab==='dashboard') renderDashboard();
+  toast(`${type} added`,'success');
+}
+function deleteAsset(id){
+  state.assets=(state.assets||[]).filter(a=>a.id!==id);
+  save(); renderAssetsList(); if(currentTab==='dashboard') renderDashboard();
+}
+function renderAssetsList(){
+  const el=document.getElementById('assets-list');
+  const list=state.assets||[];
+  if(!list.length){ el.innerHTML='<div style="color:var(--muted);font-size:12px;padding:8px 0">No other assets yet.</div>'; return; }
+  const total=otherAssetsTotal();
+  el.innerHTML=list.map(a=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px">
+    <div><span style="font-weight:700">${a.type}</span><span style="color:var(--muted);font-size:11px;margin-left:8px">${a.name||''}</span></div>
+    <div style="display:flex;align-items:center;gap:10px"><span style="font-weight:600">${fmt(a.value)}</span>
+      <button onclick="deleteAsset('${a.id}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px">✕</button></div>
+  </div>`).join('')+`<div style="display:flex;justify-content:space-between;padding:9px 0 0;font-weight:700"><span>Total</span><span>${fmt(total)}</span></div>`;
 }
 
 // ─── GOALS ───────────────────────────────────────────────────────────────────
@@ -3086,6 +3160,9 @@ function render(){
   if(currentTab==='income')     renderIncome();
   if(currentTab==='history')    renderHistory();
   if(currentTab==='watchlist')  renderWatchlist();
+  if(currentTab==='reports'&&reportType!=='pnl'){
+    const out=document.getElementById('rpt-output'); if(out&&!out.innerHTML.trim()) generateReport();
+  }
 }
 
 // ─── MERGED TABS: Holdings (Investing+Trading) & Income (Dividends+SIP) ───────
@@ -3949,7 +4026,12 @@ function renderDividends(){
     const effAvgBuy=adjQty>0?netCost/adjQty:0;
     const adjVal=cp?adjQty*cp:null;
     const cashPerShareAvg=heldQty>0?ds.totalCashAmount/heldQty:0;
-    const divYield=heldCost>0?(ds.totalCashAmount/heldCost)*100:0;
+    // Yield on Cost: trailing-12-month cash dividend per share ÷ your avg buy price
+    const _yrAgo=Date.now()-365*86400000;
+    const ttmCash=(state.dividends||[]).filter(d=>d.symbol===sym&&new Date(d.date).getTime()>=_yrAgo)
+      .reduce((s,d)=>s+(d.cashAmount!=null?d.cashAmount||0:(d.type==='cash'?d.amount||0:0)),0);
+    const rawAvgBuy0=heldQty>0?heldCost/heldQty:0;
+    const yoc=(rawAvgBuy0>0&&heldQty>0)?((ttmCash/heldQty)/rawAvgBuy0)*100:0;
 
     totCashIncome+=ds.totalCashAmount;
     totBonusShares+=ds.totalBonusShares;
@@ -3970,7 +4052,7 @@ function renderDividends(){
       </td>
       <td>${cp?fmt(cp):'—'}</td>
       <td>${adjVal!==null?fmt(adjVal):'—'}</td>
-      <td style="color:var(--green)">${divYield>0?divYield.toFixed(2)+'%':'—'}</td>
+      <td style="color:var(--green)" title="Last 12 months' cash dividend per share ÷ your average buy price">${yoc>0?yoc.toFixed(2)+'%':'—'}</td>
     </tr>`;
   }).filter(Boolean).join('');
 
@@ -4576,7 +4658,7 @@ function clearAllData() {
   const pid = getActivePortfolioId();
   const name = (getPortfolioList().find(p=>p.id===pid)||{}).name || 'this portfolio';
   if(!confirm(`Delete ALL data for "${name}" permanently?\n\nThis cannot be undone. Export a backup first if needed.`)) return;
-  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[],cashLedger:[],goals:[],lastBackupAt:null,assetTargets:{},uiPrefs:{returnsOpen:false,hiddenWidgets:[]},commissionOn:true,commissionRate:0.4};
+  state={transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[],cashLedger:[],goals:[],lastBackupAt:null,assetTargets:{},uiPrefs:{returnsOpen:false,hiddenWidgets:[]},commissionOn:true,commissionRate:0.4,assets:[]};
   save(); render();
   document.getElementById('sync-status').textContent='';
   toast('All data cleared','success');
@@ -4812,15 +4894,14 @@ function buildJournalReport(){
 // ─── REPORTS ─────────────────────────────────────────────────────────────────
 let reportType = 'statement';
 
-function setReportType(type) {
+function setReportType(type, autoGenerate) {
   reportType = type;
-  ['statement','pnl','annual','risk','rebalance','tax','journal'].forEach(t=>{
-    const b=document.getElementById('rpt-btn-'+t);
-    if(b) b.classList.toggle('active',t===type);
-  });
+  const sel=document.getElementById('rpt-select'); if(sel&&sel.value!==type) sel.value=type;
   document.getElementById('rpt-period-row').style.display = type==='pnl' ? '' : 'none';
   document.getElementById('rpt-output').innerHTML = '';
   document.getElementById('rpt-actions-bar').style.display = 'none';
+  // Every report except the date-range P&L can be produced immediately
+  if(autoGenerate && type!=='pnl') generateReport();
 }
 
 function generateReport() {
@@ -5410,7 +5491,7 @@ function doSwitchPortfolio(pid) {
   if (pid === getActivePortfolioId()) return;
   save();
   localStorage.setItem('pm_active', pid);
-  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[],cashLedger:[],goals:[],lastBackupAt:null,assetTargets:{},uiPrefs:{returnsOpen:false,hiddenWidgets:[]},commissionOn:true,commissionRate:0.4};
+  state = {transactions:[],currentPrices:{},sectorMap:{},lastSync:null,watchlist:[],dividends:[],stopLoss:{},portfolioSnapshots:[],priceAlerts:[],stockNotes:{},splits:[],dsexSnapshots:[],targetAllocations:{},prevPrices:{},sips:[],cashLedger:[],goals:[],lastBackupAt:null,assetTargets:{},uiPrefs:{returnsOpen:false,hiddenWidgets:[]},commissionOn:true,commissionRate:0.4,assets:[]};
   load();
   updatePortfolioSwitcher();
   render();
@@ -5884,6 +5965,7 @@ document.getElementById('split-modal').addEventListener('click',e=>{if(e.target=
 document.getElementById('dsex-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
 document.getElementById('commission-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCommissionModal();});
 document.getElementById('cash-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCashModal();});
+document.getElementById('assets-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAssetsModal();});
 document.getElementById('goal-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeGoalModal();});
 document.getElementById('csv-import-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
 document.getElementById('portfolio-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
@@ -5902,12 +5984,26 @@ if(state.lastSync)document.getElementById('sync-status').textContent='Last sync:
 // ── Auto-init Firebase (restores auth session if previously signed in) ──
 window.addEventListener('load',()=>initFirebase());
 
-// ── Kill any lingering service worker + all caches (legacy cache-first SW) ──
+// ── Network-only service worker (enables "Install App", never caches) ──
+// Registering it replaces any legacy cache-first SW; its activate wipes old caches.
 if('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.getRegistrations().then(regs=>{
-    regs.forEach(r=>r.unregister());
-  }).catch(()=>{});
+  navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).catch(()=>{});
   if(window.caches&&caches.keys) caches.keys().then(ks=>ks.forEach(k=>caches.delete(k))).catch(()=>{});
+}
+
+// ── Install App (PWA) ──
+let _installPrompt=null;
+window.addEventListener('beforeinstallprompt',e=>{ e.preventDefault(); _installPrompt=e; });
+window.addEventListener('appinstalled',()=>{ _installPrompt=null; toast('✅ App installed','success'); });
+function installApp(){
+  try{toggleDataMenu(true);}catch(_){}
+  const standalone=window.matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+  if(standalone) return toast('Already running as an installed app','info');
+  if(_installPrompt){ _installPrompt.prompt(); _installPrompt.userChoice.finally(()=>{_installPrompt=null;}); return; }
+  const ios=/iphone|ipad|ipod/i.test(navigator.userAgent);
+  alert(ios
+    ? 'iPhone/iPad-এ ইনস্টল করতে:\n\nSafari-তে Share বাটন (□↑) চাপুন → "Add to Home Screen"।'
+    : 'ইনস্টল করতে:\n\nChrome/Edge-এর address bar-এ install আইকন (⊕) চাপুন, অথবা মেনু (⋮) → "Install app" / "Add to Home screen"।');
 }
 
 // ── Auto-update: on load, fetch the deployed file fresh and compare versions.

@@ -1,8 +1,9 @@
 {
   "name": "Rafat's Portfolio Manager",
   "short_name": "Portfolio",
-  "description": "DSE Share Portfolio Manager — track trading and investing positions",
-  "start_url": "./index.html",
+  "description": "DSE portfolio, SIP, dividends and net worth tracker",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#0f1117",
