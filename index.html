@@ -669,6 +669,7 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <div class="theme-opt" onclick="loadFromCloud()">🔄&nbsp; Pull latest from cloud</div>
         <div class="theme-opt" onclick="pushToCloud()">⬆️&nbsp; Push local → cloud</div>
         <div style="height:1px;background:var(--border);margin:4px 6px"></div>
+        <div class="theme-opt" onclick="openEmailAuthModal('link')">📱&nbsp; Password for home-screen app</div>
         <div class="theme-opt" onclick="signOutUser()" style="color:var(--red)">🚪&nbsp; Sign Out</div>
       </div>
     </div>
@@ -1616,6 +1617,22 @@ tbody td{padding:11px 14px;vertical-align:middle}
   </div>
 </div>
 
+<!-- EMAIL / PASSWORD AUTH MODAL (sign-in for the iPhone home-screen app) -->
+<div class="modal-overlay" id="email-auth-modal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title" id="ea-title">📱 Sign in</div>
+    <div id="ea-desc" style="font-size:12.5px;color:var(--muted);line-height:1.6;margin-bottom:14px"></div>
+    <div class="form-group"><label>Email</label><input id="ea-email" type="email" autocomplete="username" placeholder="you@gmail.com"/></div>
+    <div class="form-group"><label id="ea-pw-label">Password</label><input id="ea-pw" type="password" autocomplete="current-password" placeholder="••••••••"/></div>
+    <div id="ea-msg" style="font-size:12px;min-height:16px;margin-bottom:8px"></div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeEmailAuthModal()">Cancel</button>
+      <button class="btn-primary" id="ea-submit" onclick="submitEmailAuth()">Sign in</button>
+    </div>
+    <div id="ea-alt" style="font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.6"></div>
+  </div>
+</div>
+
 <!-- OTHER ASSETS MODAL -->
 <div class="modal-overlay" id="assets-modal">
   <div class="modal" style="max-width:520px">
@@ -2437,7 +2454,7 @@ let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, wa
 function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
 
 // Bump this on every deploy — the auto-updater compares it against the live file.
-const APP_VERSION='2026-10-25.5';
+const APP_VERSION='2026-10-25.6';
 
 // Manual escape hatch (data menu): unregister SWs, clear caches, hard reload fresh.
 function hardRefresh(){
@@ -4627,9 +4644,13 @@ function renderNoDataHint(){
     extra.textContent=`Signed in as ${_fbUser.email||'your account'}, but the cloud copy is empty for this portfolio. On the device that has your data, open ☁️ → "Push local → cloud", then come back here and choose ☁️ → "Pull latest from cloud".`;
   } else {
     btn.style.display='';
-    extra.textContent=standalone&&/iphone|ipad|ipod/i.test(navigator.userAgent)
-      ? 'iPhone-এর home-screen অ্যাপের storage Safari থেকে আলাদা — তাই এখানে আলাদা করে একবার sign in করতে হবে।'
-      : '';
+    if(isIOSStandalone()){
+      btn.textContent='📱 Sign in with email & password';
+      extra.innerHTML='iPhone-এর home-screen অ্যাপে Google sign-in কাজ করে না। প্রথমবার: Safari-তে সাইটটা খুলুন → Google দিয়ে sign in → ☁️ মেনু → <b>"Password for home-screen app"</b>-এ একটা পাসওয়ার্ড দিন। তারপর এখানে সেই ইমেইল আর পাসওয়ার্ড দিয়ে sign in করুন।';
+    } else {
+      btn.textContent='☁️ Sign in & load my data';
+      extra.textContent='';
+    }
   }
 }
 function snoozeBackupNudge(){ sessionStorage.setItem('pm_backup_snoozed','1'); document.getElementById('backup-nudge').style.display='none'; }
@@ -5192,6 +5213,7 @@ function initFirebase(){
 // blocks it (home-screen app, in-app browsers, popup blockers) fall back to
 // a full-page redirect; the result is picked up in initFirebase on return.
 function signInWithGoogle(){
+  if(isIOSStandalone()) return openEmailAuthModal('signin'); // Google can't sign in here
   initFirebase().then(()=>{
     const wait=()=>{
       if(!_fbAuth){setTimeout(wait,100);return;}
@@ -5208,6 +5230,91 @@ function signInWithGoogle(){
     };
     wait();
   });
+}
+
+// ─── EMAIL/PASSWORD AUTH ─────────────────────────────────────────────────────
+// iOS home-screen apps run in isolated storage and Safari won't hand Google
+// sign-in back from firebaseapp.com, so popup and redirect both fail there.
+// Email/password is a direct API call with no cross-domain hop. The password
+// is linked to the same Google account (same uid), so the same cloud data loads.
+let _eaMode='signin';
+function isIOSStandalone(){
+  return (window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)&&/iphone|ipad|ipod/i.test(navigator.userAgent);
+}
+function openEmailAuthModal(mode){
+  try{document.getElementById('cloud-menu').classList.remove('open');}catch(_){}
+  if(mode==='link'&&!_fbUser) return toast('Sign in with Google first','error');
+  _eaMode=mode;
+  const $=id=>document.getElementById(id);
+  $('ea-msg').textContent=''; $('ea-pw').value='';
+  if(mode==='link'){
+    $('ea-title').textContent='📱 Password for home-screen app';
+    $('ea-desc').innerHTML='iPhone-এর home-screen অ্যাপে Google sign-in কাজ করে না। এখানে একটা পাসওয়ার্ড সেট করুন — তারপর home-screen অ্যাপে <b>এই ইমেইল আর পাসওয়ার্ড</b> দিয়ে sign in করলে একই ডেটা আসবে।';
+    $('ea-email').value=_fbUser.email||''; $('ea-email').readOnly=true;
+    $('ea-pw-label').textContent='New password (at least 6 characters)';
+    $('ea-pw').autocomplete='new-password';
+    $('ea-submit').textContent='Set password';
+    $('ea-alt').innerHTML='';
+  } else {
+    $('ea-title').textContent='📱 Sign in';
+    $('ea-desc').innerHTML='ইমেইল ও পাসওয়ার্ড দিয়ে sign in করুন।<br>পাসওয়ার্ড এখনো সেট করেননি? Safari-তে সাইটটা খুলুন → Google দিয়ে sign in → ☁️ মেনু → <b>"Password for home-screen app"</b>।';
+    $('ea-email').readOnly=false;
+    $('ea-pw-label').textContent='Password';
+    $('ea-pw').autocomplete='current-password';
+    $('ea-submit').textContent='Sign in';
+    $('ea-alt').innerHTML='<a href="#" style="color:var(--accent2)" onclick="resetEmailPassword();return false">Forgot password?</a>';
+  }
+  $('email-auth-modal').classList.add('open');
+  setTimeout(()=>$(mode==='link'?'ea-pw':'ea-email').focus(),50);
+}
+function closeEmailAuthModal(){ document.getElementById('email-auth-modal').classList.remove('open'); }
+function eaMsg(t,ok){ const m=document.getElementById('ea-msg'); m.style.color=ok?'var(--green)':'var(--red)'; m.textContent=t; }
+const EA_ERRORS={
+  'auth/operation-not-allowed':'Email/Password sign-in is turned off for this app. Enable it once: Firebase Console → Authentication → Sign-in method → Email/Password → Enable.',
+  'auth/weak-password':'Password must be at least 6 characters.',
+  'auth/requires-recent-login':'For security, sign out, sign in with Google again, then set the password.',
+  'auth/invalid-email':'That email address is not valid.',
+  'auth/wrong-password':'Wrong email or password.',
+  'auth/invalid-credential':'Wrong email or password.',
+  'auth/invalid-login-credentials':'Wrong email or password.',
+  'auth/user-not-found':'No account with this email. Set a password first from Safari (see above).',
+  'auth/too-many-requests':'Too many attempts. Wait a few minutes and try again.',
+  'auth/network-request-failed':'Network error — check your internet connection.',
+  'auth/credential-already-in-use':'This email is already used by a different account.',
+  'auth/email-already-in-use':'This email is already used by a different account.',
+};
+async function submitEmailAuth(){
+  await initFirebase();
+  const email=document.getElementById('ea-email').value.trim();
+  const pw=document.getElementById('ea-pw').value;
+  if(!email) return eaMsg('Enter your email');
+  if(pw.length<6) return eaMsg('Password must be at least 6 characters');
+  const btn=document.getElementById('ea-submit'); btn.disabled=true;
+  try{
+    if(_eaMode==='link'){
+      try{
+        await _fbUser.linkWithCredential(firebase.auth.EmailAuthProvider.credential(email,pw));
+      }catch(e){
+        if(e.code==='auth/provider-already-linked') await _fbUser.updatePassword(pw); // already set → change it
+        else throw e;
+      }
+      eaMsg('✅ Password saved. Now open the home-screen app and sign in with this email and password.',true);
+      toast('Password set for the home-screen app','success');
+    } else {
+      await _fbAuth.signInWithEmailAndPassword(email,pw);
+      closeEmailAuthModal();
+      toast('Signed in — loading your data…','success'); // onAuthStateChanged → loadFromCloud
+    }
+  }catch(e){
+    eaMsg(EA_ERRORS[e.code]||(e.message||'Something went wrong'));
+  }finally{ btn.disabled=false; }
+}
+async function resetEmailPassword(){
+  await initFirebase();
+  const email=document.getElementById('ea-email').value.trim();
+  if(!email) return eaMsg('Type your email first, then tap "Forgot password?"');
+  try{ await _fbAuth.sendPasswordResetEmail(email); eaMsg('📧 Reset link sent to '+email+'. Open it, set a new password, then sign in here.',true); }
+  catch(e){ eaMsg(EA_ERRORS[e.code]||e.message); }
 }
 
 function signOutUser(){
@@ -6024,6 +6131,8 @@ document.getElementById('dsex-modal').addEventListener('click',e=>{if(e.target==
 document.getElementById('commission-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCommissionModal();});
 document.getElementById('cash-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCashModal();});
 document.getElementById('assets-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAssetsModal();});
+document.getElementById('email-auth-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeEmailAuthModal();});
+document.getElementById('ea-pw').addEventListener('keydown',e=>{if(e.key==='Enter')submitEmailAuth();});
 document.getElementById('goal-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeGoalModal();});
 document.getElementById('csv-import-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
 document.getElementById('portfolio-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
