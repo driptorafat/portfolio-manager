@@ -937,10 +937,30 @@ tbody td{padding:11px 14px;vertical-align:middle}
 
   <!-- ══ WATCHLIST ══ -->
   <div id="page-watchlist" class="page">
+    <!-- Smart Screener -->
+    <div class="chart-card" id="scr-panel" style="margin-bottom:18px">
+      <div class="chart-card-title">
+        <span>🤖 Smart Screener</span>
+        <span style="display:flex;gap:6px">
+          <button class="mini-btn" onclick="openScreenerSettings()">⚙️ Settings</button>
+          <button class="btn-add" id="scr-run-btn" style="font-size:12px;padding:6px 12px" onclick="runScreener({manual:true})">🔍 Run now</button>
+        </span>
+      </div>
+      <div id="scr-status" style="font-size:12.5px;color:var(--muted)"></div>
+      <div id="scr-progress" style="display:none;margin-top:10px">
+        <div style="height:6px;background:var(--border);border-radius:4px;overflow:hidden"><div id="scr-bar" style="height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .3s"></div></div>
+        <div id="scr-progress-text" style="font-size:11px;color:var(--muted);margin-top:5px"></div>
+      </div>
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;font-size:12.5px;color:var(--accent2);font-weight:600">কীভাবে স্টক বাছাই হয় (৬টা স্ট্র্যাটেজি)</summary>
+        <div id="scr-method" style="font-size:12px;color:var(--muted);line-height:1.65;margin-top:8px"></div>
+      </details>
+    </div>
+
     <div class="section-head" style="margin-bottom:16px">
       <div>
         <div class="section-title">👁 Watchlist</div>
-        <div style="font-size:12px;color:var(--muted);margin-top:3px">Track stocks you want to buy — set a target price and monitor the gap</div>
+        <div style="font-size:12px;color:var(--muted);margin-top:3px">🤖 = added by the screener (removed automatically if it stops qualifying) · 📌 Keep makes it yours</div>
       </div>
       <button class="btn-add" onclick="openWatchlistModal()">+ Add Stock</button>
     </div>
@@ -953,6 +973,15 @@ tbody td{padding:11px 14px;vertical-align:middle}
         <tbody id="watchlist-tbody"></tbody>
       </table>
     </div>
+
+    <details id="scr-results-wrap" style="margin-top:22px">
+      <summary style="cursor:pointer;font-weight:700;font-size:14px">📊 Full screener results <span id="scr-results-count" style="font-weight:400;color:var(--muted);font-size:12px"></span></summary>
+      <div style="font-size:11.5px;color:var(--muted);margin:8px 0 10px">Every scanned stock that passed at least one strategy, best first. Hover a strategy chip for its rule.</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Symbol</th><th>Strategies</th><th>P/E</th><th>P/B</th><th>ROE</th><th>Profit growth</th><th>Div yield</th><th>From 52w high</th><th>30d trend</th><th></th></tr></thead>
+        <tbody id="scr-results-tbody"></tbody>
+      </table></div>
+    </details>
   </div>
 
   <!-- ══ REPORTS ══ -->
@@ -1633,6 +1662,35 @@ tbody td{padding:11px 14px;vertical-align:middle}
   </div>
 </div>
 
+<!-- SCREENER SETTINGS MODAL -->
+<div class="modal-overlay" id="scr-settings-modal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title">⚙️ Screener Settings</div>
+    <label class="theme-opt" style="cursor:pointer;font-size:13.5px;padding:10px 12px;background:var(--surface2);border-radius:8px;margin-bottom:12px">
+      <input type="checkbox" id="scr-auto" style="margin-right:10px"/> Run automatically once a day and update the watchlist
+    </label>
+    <div class="form-row">
+      <div class="form-group"><label>Stocks to keep in watchlist</label>
+        <select id="scr-topn"><option>5</option><option>10</option><option>15</option><option>20</option></select></div>
+      <div class="form-group"><label>Minimum strategies passed</label>
+        <select id="scr-minpass"><option value="1">1 (more picks)</option><option value="2">2 (balanced)</option><option value="3">3 (strict)</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Min market cap (৳ crore)</label><input id="scr-mcap" type="number" min="0" step="50"/></div>
+      <div class="form-group"><label>Max picks per sector</label>
+        <select id="scr-sectorcap"><option>1</option><option>2</option><option>3</option><option>5</option><option value="99">No limit</option></select></div>
+    </div>
+    <label class="theme-opt" style="cursor:pointer;font-size:13px;padding:6px 2px"><input type="checkbox" id="scr-incb" style="margin-right:10px"/> Include category B stocks (A only is safer)</label>
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:12px 0 6px;font-weight:600">Strategies used</div>
+    <div id="scr-strat-toggles" style="display:grid;grid-template-columns:1fr 1fr;gap:4px"></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:12px;line-height:1.5">The first full scan downloads about 100 company pages (~60 MB, 3–5 minutes) — use Wi-Fi and keep the app open. After that only stale pages refresh (7-day cache), and results sync to your other devices through the cloud.</div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeScreenerSettings()">Cancel</button>
+      <button class="btn-primary" onclick="saveScreenerSettings()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- OTHER ASSETS MODAL -->
 <div class="modal-overlay" id="assets-modal">
   <div class="modal" style="max-width:520px">
@@ -1689,14 +1747,12 @@ const PROXIES = [
   (u,fmt) => ({url:'https://r.jina.ai/'+u, headers:{'X-Return-Format':fmt||'html'}}),
   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
   (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-  (u) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,
-  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
 ];
 
 let _proxyHealth={state:'unknown',idx:-1}; // 'ok' (primary), 'degraded' (fallback used), 'down'
 // fmt: jina return format ('text' for JSON, 'html' for pages). validate: optional
 // predicate the returned text must satisfy (rejects garbage like a proxy's own homepage).
-async function fetchViaProxy(targetUrl, ms=15000, fmt, validate) {
+async function fetchViaProxy(targetUrl, ms=15000, fmt, validate, quiet) {
   let last; const errs=[];
   for (let i=0;i<PROXIES.length;i++) {
     const host=(()=>{ try{ const s=PROXIES[i](targetUrl,fmt); return new URL(typeof s==='string'?s:s.url).hostname; }catch(_){ return 'proxy'+i; } })();
@@ -1713,7 +1769,7 @@ async function fetchViaProxy(targetUrl, ms=15000, fmt, validate) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       let txt=await res.text();
       if (txt&&txt.startsWith('{"contents"')) { try { txt=JSON.parse(txt).contents||''; } catch(_){} }
-      if (txt&&txt.length>200&&(!validate||validate(txt))){ _proxyHealth={state:i===0?'ok':'degraded',idx:i,errors:errs}; updateProxyIndicator(); return txt; }
+      if (txt&&txt.length>200&&(!validate||validate(txt))){ if(!quiet){ _proxyHealth={state:i===0?'ok':'degraded',idx:i,errors:errs}; updateProxyIndicator(); } return txt; }
       throw new Error(`wrong content (${txt?txt.length:0}b: ${String(txt||'').slice(0,40).replace(/\s+/g,' ')})`);
     } catch(e){
       last=e;
@@ -1721,7 +1777,7 @@ async function fetchViaProxy(targetUrl, ms=15000, fmt, validate) {
       errs.push(`${host}: ${why}`);
     }
   }
-  _proxyHealth={state:'down',idx:-1,errors:errs,at:new Date().toISOString()}; updateProxyIndicator();
+  if(!quiet){ _proxyHealth={state:'down',idx:-1,errors:errs,at:new Date().toISOString()}; updateProxyIndicator(); }
   console.warn('All proxies failed:',errs);
   throw new Error('All data sources failed');
 }
@@ -2468,7 +2524,7 @@ let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, wa
 function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
 
 // Bump this on every deploy — the auto-updater compares it against the live file.
-const APP_VERSION='2026-10-25.7';
+const APP_VERSION='2026-10-26.1';
 
 // Manual escape hatch (data menu): unregister SWs, clear caches, hard reload fresh.
 function hardRefresh(){
@@ -4282,7 +4338,7 @@ function submitWatchlist(){
   state.watchlist = state.watchlist || [];
   if (wlEditingId) {
     const idx = state.watchlist.findIndex(w => w.id === wlEditingId);
-    if (idx !== -1) state.watchlist[idx] = {...state.watchlist[idx], symbol, name, targetPrice, sector, notes};
+    if (idx !== -1) state.watchlist[idx] = {...state.watchlist[idx], symbol, name, targetPrice, sector, notes, auto:false}; // edited → yours now
     toast('Watchlist updated','success');
   } else {
     if (state.watchlist.find(w => w.symbol === symbol)) return toast(`${symbol} is already in your watchlist`,'error');
@@ -4297,22 +4353,355 @@ function editWatchlistItem(id){
   if (w) openWatchlistModal(w);
 }
 function removeWatchlistItem(id){
+  const w=(state.watchlist||[]).find(x=>x.id===id);
+  if(w&&w.auto){ // don't let the screener re-add it for 30 days
+    const until=new Date(Date.now()+30*86400000).toISOString().split('T')[0];
+    scrCfg().dismissed[w.symbol]=until;
+  }
   state.watchlist = (state.watchlist||[]).filter(w => w.id !== id);
   save(); renderWatchlist(); toast('Removed from watchlist','success');
 }
+// ─── SMART SCREENER ──────────────────────────────────────────────────────────
+// Rules-based screening of DSE stocks using published strategies of well-known
+// investors. Picks are added to / removed from the watchlist automatically.
+// This is a screening tool, not investment advice.
+const SCR_STRATS={
+  Graham:    {icon:'🏛️',name:'Graham Value',          rule:'P/E ≤ 15 and P/B ≤ 1.5 (or P/E × P/B ≤ 22.5); profitable every reported year; cash dividend 5 years running; profit up ≥ 33% over the period. — Benjamin Graham, The Intelligent Investor (defensive investor criteria)'},
+  Buffett:   {icon:'🏰',name:'Buffett Quality',       rule:'Average ROE ≥ 15% over the last 5 years; profit growing ≥ 8%/yr; profitable every year; P/E ≤ 25 (a fair price for a great business). — Warren Buffett-style quality compounding'},
+  Greenblatt:{icon:'🧮',name:'Greenblatt Magic Formula',rule:'Top 20% by combined rank of earnings yield (E/P) and return on equity, financial companies excluded. — Joel Greenblatt, The Little Book That Beats the Market'},
+  Lynch:     {icon:'📈',name:'Lynch GARP',            rule:'PEG = P/E ÷ profit growth ≤ 1, with growth between 10% and 50% a year. — Peter Lynch, One Up on Wall Street'},
+  Dividend:  {icon:'💵',name:'Dividend Income',       rule:'Dividend yield ≥ 5%; cash dividend every one of the last 5 years; payout ≤ 80% of EPS (sustainable). — dividend-growth investing'},
+  Momentum:  {icon:'🚀',name:"O'Neil / Minervini Momentum",rule:'Within 25% of the 52-week high and ≥ 30% above the 52-week low; price above its 20-day average and up over 30 days; latest yearly profit higher than the year before. — William O\'Neil (CAN SLIM) / Mark Minervini trend template'},
+};
+const SCR_FIN=['Bank','Insurance','Financial In','Mutual Fund'];
+const SCR_CACHE_KEY='pm_scr_cache', SCR_TTL=7*86400000;
+let _scrRunning=false;
+
+function scrCfg(){
+  state.screener=Object.assign({auto:true,topN:10,minPass:2,minMcapCr:200,sectorCap:3,includeB:false,
+    strategies:Object.keys(SCR_STRATS),lastRun:null,ranked:[],scanned:0,universe:0,dismissed:{}},state.screener||{});
+  return state.screener;
+}
+function scrLoadCache(){ try{ return JSON.parse(localStorage.getItem(SCR_CACHE_KEY)||'{}'); }catch(_){ return {}; } }
+function scrSaveCache(c){ try{ localStorage.setItem(SCR_CACHE_KEY,JSON.stringify(c)); }catch(_){} }
+
+// Pull the fundamentals we need out of a dse.com.bd company page (Next.js payload)
+function scrParseCompany(html){
+  const u=html.replace(/\\"/g,'"');
+  const anchor=u.indexOf('"weekHigh52"'); if(anchor<0) return null;
+  const win=u.slice(Math.max(0,anchor-2500),anchor+2500);
+  const num=k=>{ const m=win.match(new RegExp('"'+k+'":(-?[\\d.]+)')); return m?+m[1]:null; };
+  const arr=k=>{
+    const j=u.indexOf('"'+k+'":['); if(j<0) return [];
+    let i=j+k.length+3,d=0; const s=i;
+    for(;i<u.length;i++){ const c=u[i]; if(c==='[')d++; else if(c===']'){ d--; if(d===0){ i++; break; } } }
+    try{ return JSON.parse(u.slice(s,i)); }catch(_){ return []; }
+  };
+  const sp=arr('sharePattern'); const pat=sp.length?sp[sp.length-1].pattern||{}:{};
+  return {
+    t:Date.now(), eps:num('eps'), nav:num('nav'), hi:num('weekHigh52'), lo:num('weekLow52'),
+    ff:num('freeFloat'), fv:num('faceValue')||10,
+    sponsor:pat.sponsor!=null?+pat.sponsor:null, gov:+(pat.government||0),
+    yrs:arr('multiYearFinancials').filter(y=>y&&y.profit!=null)
+        .map(y=>[y.year, y.epsBasic??y.epsContBasicOriginal??null, y.nav??null, y.profit]).sort((a,b)=>a[0]-b[0]),
+    div:arr('dividendHistory').map(d=>[d.year,+d.cash||0,+d.stock||0]).sort((a,b)=>a[0]-b[0]),
+    pt:arr('peTrend').map(p=>p.audited).filter(v=>v>0),
+  };
+}
+
+// Score one stock. Returns null if data is insufficient.
+function scrEvaluate(row,c){
+  const p=+row.price;
+  if(!c||!(c.eps>0)||!(c.nav>0)||!(p>0)||c.yrs.length<3) return null;
+  const pe=p/c.eps, pb=p/c.nav;
+  const recent=c.yrs.slice(-5).filter(y=>y[1]!=null&&y[2]>0);
+  const roe=recent.length?recent.reduce((s,y)=>s+y[1]/y[2],0)/recent.length*100:0;
+  const profits=c.yrs.map(y=>y[3]);
+  const span=c.yrs[c.yrs.length-1][0]-c.yrs[0][0];
+  // Profit (not EPS) growth — EPS history is distorted by bonus shares and splits
+  const growth=(profits[0]>0&&profits[profits.length-1]>0&&span>0)?(Math.pow(profits[profits.length-1]/profits[0],1/span)-1)*100:null;
+  const allProfitable=profits.every(v=>v>0);
+  const last5=c.div.slice(-5); const cashYears=last5.filter(d=>d[1]>0).length;
+  const dps=c.div.length?c.div[c.div.length-1][1]*c.fv/100:0;
+  const dy=dps/p*100, payout=c.eps>0?dps/c.eps:null;
+  const offHigh=c.hi?(c.hi-p)/c.hi*100:null, aboveLow=c.lo?(p-c.lo)/c.lo*100:null;
+  // peTrend × EPS ≈ price, so the P/E series traces the recent price path
+  let trend=null, chg30=null;
+  if(c.pt.length>=20){ const ma=c.pt.slice(-20).reduce((s,v)=>s+v,0)/20; trend=(c.pt[c.pt.length-1]/ma-1)*100; chg30=(c.pt[c.pt.length-1]/c.pt[0]-1)*100; }
+  const fin=SCR_FIN.includes(row.sector);
+  const S={
+    Graham: pe<=15&&(pb<=1.5||pe*pb<=22.5)&&allProfitable&&cashYears>=5&&profits[profits.length-1]>=1.33*profits[0],
+    Buffett: roe>=15&&(growth||0)>=8&&pe<=25&&allProfitable,
+    Lynch: growth!=null&&growth>=10&&growth<=50&&pe/growth<=1,
+    Dividend: dy>=5&&cashYears>=5&&payout!=null&&payout<=0.8,
+    Momentum: offHigh!=null&&offHigh<=25&&aboveLow>=30&&trend!=null&&trend>0&&chg30>0&&profits.length>=2&&profits[profits.length-1]>profits[profits.length-2],
+    Greenblatt:false, // set after ranking the whole universe
+  };
+  const owners=(c.sponsor==null?null:c.sponsor+(c.gov||0)); // govt-owned firms list holding as "government"
+  const flags=[];
+  if(owners!=null&&owners<30) flags.push('Sponsor holding below the 30% BSEC minimum');
+  if(c.ff!=null&&c.ff<10) flags.push('Very low free float — price easier to move');
+  if(profits.length>=2&&profits[profits.length-1]<profits[profits.length-2]*0.8) flags.push('Latest yearly profit fell over 20%');
+  return {code:row.code,name:row.name,sector:row.sector,price:p,pe,pb,roe,growth,dy,payout,offHigh,aboveLow,trend,chg30,
+    fin,ey:1/pe,owners,ff:c.ff,eps:c.eps,nav:c.nav,S,flags,
+    graham:(!fin&&c.eps>0&&c.nav>0)?Math.sqrt(22.5*c.eps*c.nav):null};
+}
+
+function scrSetProgress(pct,text){
+  const w=document.getElementById('scr-progress'); if(!w) return;
+  w.style.display=pct==null?'none':'block';
+  if(pct!=null){ document.getElementById('scr-bar').style.width=Math.max(2,pct)+'%'; document.getElementById('scr-progress-text').textContent=text||''; }
+}
+
+// jina first (retried once), then a single quick fallback — bounded so one bad page
+// can't stall the scan for minutes cycling through dead proxies
+let _scrGate=0; // shared back-off: one 429 pauses every worker instead of all of them retrying
+async function scrFetchCompany(code){
+  const url='https://www.dse.com.bd/company/'+code;
+  const ok=t=>t&&t.includes('weekHigh52');
+  for(let attempt=0;attempt<3;attempt++){
+    while(Date.now()<_scrGate) await new Promise(s=>setTimeout(s,500));
+    try{
+      const ctrl=new AbortController(), tid=setTimeout(()=>ctrl.abort(),20000);
+      const r=await fetch('https://r.jina.ai/'+url,{headers:{'X-Return-Format':'html'},signal:ctrl.signal}).finally(()=>clearTimeout(tid));
+      if(r.status===429){ _scrGate=Math.max(_scrGate,Date.now()+8000); continue; } // jina free tier ~20/min
+      const t=await r.text(); if(r.ok&&ok(t)) return t;
+    }catch(_){}
+    await new Promise(s=>setTimeout(s,1500));
+  }
+  return fetchViaProxy(url,12000,'html',ok,true); // last resort through the other proxies
+}
+
+let _scrQueued=false;
+async function runScreener(opts){
+  opts=opts||{};
+  if(_scrRunning){
+    if(opts.manual){ _scrQueued=true; toast('A scan is already running — a full scan will start right after it','info'); }
+    return;
+  }
+  const cfg=scrCfg();
+  _scrRunning=true;
+  // During a background (auto) update the button stays tappable so a full scan can be queued
+  const btn=document.getElementById('scr-run-btn'); if(btn){ btn.disabled=!!opts.manual; btn.textContent=opts.manual?'⏳ Scanning…':'⏳ Updating… (tap for full scan)'; }
+  try{
+    scrSetProgress(3,'Loading the full DSE market list…');
+    const txt=await fetchViaProxy(DSE_API,20000,'text',t=>t.includes('"rows"')&&t.includes('"code"'),true);
+    const m=txt.match(/\{[\s\S]*"rows"[\s\S]*\}/);
+    const rows=JSON.parse(m?m[0]:txt).rows||[];
+    const cats=cfg.includeB?['A','B']:['A'];
+    // Stage 1 — cheap filters on the whole market (liquid, profitable, sizeable, A/B category)
+    const universe=rows.filter(r=>r.board==='PUBLIC'&&cats.includes(r.category)&&+r.price>0&&+r.volume>0
+      &&+r.pe>0&&+r.pe<40&&+r.marketCap>=cfg.minMcapCr*1e7);
+    // Stage 2 — company details (cached 7 days). Manual runs fetch everything stale;
+    // automatic runs fetch a few per day so phones don't burn data.
+    const cache=scrLoadCache();
+    const stale=universe.filter(r=>!cache[r.code]||Date.now()-cache[r.code].t>SCR_TTL)
+      .sort((a,b)=>(cache[a.code]?.t||0)-(cache[b.code]?.t||0));
+    const mobile=matchMedia('(max-width: 768px)').matches;
+    const budget=opts.manual?stale.length:(mobile?10:30);
+    const todo=stale.slice(0,budget);
+    let done=0, failed=0; const CONC=2;
+    const worker=async()=>{
+      while(todo.length){
+        const r=todo.shift();
+        try{
+          const html=await scrFetchCompany(r.code);
+          const parsed=scrParseCompany(html);
+          if(parsed){ cache[r.code]=parsed; } else failed++;
+        }catch(_){ failed++; }
+        done++;
+        if(done%5===0) scrSaveCache(cache);
+        scrSetProgress(5+done/Math.max(1,budget)*85,`Analysing company data… ${done}/${budget}${failed?` (${failed} unavailable)`:''}`);
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(CONC,todo.length)},worker));
+    scrSaveCache(cache);
+    scrSetProgress(93,'Scoring against 6 strategies…');
+
+    // Evaluate everything we have data for
+    const evals=universe.map(r=>scrEvaluate(r,cache[r.code])).filter(Boolean);
+    const coverage=evals.length/Math.max(1,universe.length);
+    // Greenblatt: rank earnings yield + ROE among non-financials
+    const nf=evals.filter(e=>!e.fin);
+    ['ey','roe'].forEach(k=>[...nf].sort((a,b)=>b[k]-a[k]).forEach((e,i)=>e['r_'+k]=i));
+    nf.forEach(e=>e.mf=e.r_ey+e.r_roe);
+    const cut=[...nf].map(e=>e.mf).sort((a,b)=>a-b)[Math.max(0,Math.floor(nf.length/5)-1)];
+    nf.forEach(e=>{ e.S.Greenblatt=e.mf<=cut; });
+    // Score: number of enabled strategies passed; ties broken by average percentile on key metrics
+    const enabled=cfg.strategies.filter(k=>SCR_STRATS[k]);
+    const pct=(k,dir)=>{ const v=evals.filter(e=>e[k]!=null).sort((a,b)=>dir*(a[k]-b[k])); v.forEach((e,i)=>{ e['p_'+k]=v.length>1?i/(v.length-1):1; }); };
+    pct('ey',1); pct('roe',1); pct('growth',1); pct('dy',1);
+    evals.forEach(e=>{
+      e.passed=enabled.filter(k=>e.S[k]);
+      e.n=e.passed.length;
+      e.tie=((e.p_ey||0)+(e.p_roe||0)+(e.p_growth||0)+(e.p_dy||0))/4;
+      e.score=e.n+e.tie;
+      e.eligible=e.n>=cfg.minPass&&!e.flags.some(f=>f.startsWith('Sponsor'));
+    });
+    const ranked=evals.filter(e=>e.n>0).sort((a,b)=>b.score-a.score);
+
+    // Pick top N with a per-sector cap (diversification), skipping recently dismissed
+    const today=new Date().toISOString().split('T')[0];
+    const dismissed=scrCfg().dismissed||{}; // current state — cloud may have replaced it mid-scan
+    const picks=[], perSector={};
+    for(const e of ranked){
+      if(picks.length>=cfg.topN) break;
+      if(!e.eligible) continue;
+      if(dismissed[e.code]&&dismissed[e.code]>today) continue;
+      if((perSector[e.sector]||0)>=cfg.sectorCap) continue;
+      perSector[e.sector]=(perSector[e.sector]||0)+1;
+      picks.push(e);
+    }
+
+    // Only change the watchlist when we have data for most of the universe
+    let added=0, removed=0;
+    if(coverage>=0.7){
+      ({added,removed}=scrApplyToWatchlist(picks,today));
+    }
+    // Keep compact results for display / cross-device sync
+    const out=scrCfg(); // write into the live state object, not the one captured at start
+    out.ranked=ranked.slice(0,40).map(e=>({code:e.code,name:e.name,sector:e.sector,price:e.price,
+      pe:+e.pe.toFixed(2),pb:+e.pb.toFixed(2),roe:+e.roe.toFixed(1),growth:e.growth==null?null:+e.growth.toFixed(1),
+      dy:+e.dy.toFixed(2),offHigh:e.offHigh==null?null:+e.offHigh.toFixed(1),trend:e.chg30==null?null:+e.chg30.toFixed(1),
+      passed:e.passed,n:e.n,eligible:e.eligible,flags:e.flags,picked:picks.includes(e),
+      graham:e.graham?+e.graham.toFixed(1):null}));
+    out.lastRun=new Date().toISOString();
+    out.universe=universe.length; out.scanned=evals.length; out.coverage=coverage;
+    rows.forEach(r=>{ if(picks.some(p=>p.code===r.code)&&+r.price>0) state.currentPrices[r.code]=+r.price; });
+    save();
+    scrSetProgress(null);
+    renderWatchlist();
+    if(coverage<0.7) toast(`Screener: data for ${evals.length}/${universe.length} stocks so far — run “🔍 Run now” on Wi-Fi to finish the first scan.`,'info');
+    else toast(`🤖 Screener done — ${picks.length} picks${added?`, ${added} added`:''}${removed?`, ${removed} removed`:''}`,'success');
+  }catch(e){
+    scrSetProgress(null);
+    if(opts.manual) toast('Screener failed: '+(e.message||'network error'),'error');
+    console.warn('Screener failed:',e);
+  }finally{
+    _scrRunning=false;
+    if(btn){ btn.disabled=false; btn.textContent='🔍 Run now'; }
+    renderScreenerPanel();
+    if(_scrQueued){ _scrQueued=false; setTimeout(()=>runScreener({manual:true}),300); }
+  }
+}
+
+function scrReasonText(e){
+  const bits=[`Passes ${e.n}/6: ${e.passed.map(k=>SCR_STRATS[k].name).join(', ')}`,
+    `P/E ${e.pe.toFixed(1)}`,`P/B ${e.pb.toFixed(2)}`,`ROE ${e.roe.toFixed(0)}%`,
+    e.growth!=null?`profit growth ${e.growth.toFixed(0)}%/yr`:null, e.dy>0?`yield ${e.dy.toFixed(1)}%`:null,
+    e.graham?`Graham value ৳${e.graham.toFixed(1)}`:null];
+  return bits.filter(Boolean).join(' · ');
+}
+
+// Add new picks, refresh existing auto entries, drop auto entries that no longer qualify.
+// Entries the user added or pinned (auto:false) are never touched.
+function scrApplyToWatchlist(picks,today){
+  state.watchlist=state.watchlist||[];
+  const pickCodes=new Set(picks.map(p=>p.code));
+  let added=0, removed=0;
+  state.watchlist=state.watchlist.filter(w=>{
+    if(w.auto&&!pickCodes.has(w.symbol)){ removed++; return false; }
+    return true;
+  });
+  picks.forEach(p=>{
+    const meta={n:p.n,passed:p.passed,at:today,flags:p.flags};
+    const existing=state.watchlist.find(w=>w.symbol===p.code);
+    if(existing){ existing.scr=meta; if(existing.auto) existing.notes=scrReasonText(p); return; }
+    state.watchlist.push({id:Date.now()+Math.random(),symbol:p.code,name:p.name,targetPrice:0,sector:p.sector,
+      notes:scrReasonText(p),addedDate:today,auto:true,scr:meta});
+    added++;
+  });
+  return {added,removed};
+}
+function keepWatchlistItem(id){
+  const w=(state.watchlist||[]).find(x=>x.id===id); if(!w) return;
+  w.auto=false; save(); renderWatchlist(); toast(`📌 ${w.symbol} kept — the screener won't remove it`,'success');
+}
+
+function renderScreenerPanel(){
+  const el=document.getElementById('scr-status'); if(!el) return;
+  const cfg=scrCfg();
+  const autoCount=(state.watchlist||[]).filter(w=>w.auto).length;
+  if(!cfg.lastRun){
+    el.innerHTML=`Not run yet. <b>🔍 Run now</b> scans every A-category DSE stock (market cap ≥ ৳${cfg.minMcapCr} cr) against 6 investing strategies and adds the best ${cfg.topN} to your watchlist. The first scan takes a few minutes — use Wi-Fi.`;
+  } else {
+    const ago=Math.round((Date.now()-new Date(cfg.lastRun))/3600000);
+    el.innerHTML=`Last scan ${ago<1?'just now':ago<48?ago+'h ago':Math.round(ago/24)+'d ago'} · ${cfg.scanned}/${cfg.universe} stocks analysed · <b>${autoCount}</b> screener picks in your watchlist · ${cfg.auto?'auto-updates daily':'auto-update off'}`;
+  }
+  const meth=document.getElementById('scr-method');
+  if(meth&&!meth.innerHTML) meth.innerHTML=
+    `<div style="margin-bottom:8px">শুধু <b>ক্যাটাগরি A</b>, লাভজনক, নিয়মিত লেনদেন হয় এবং মার্কেট ক্যাপ ≥ ৳${cfg.minMcapCr} কোটি এমন শেয়ার দেখা হয়। প্রতিটা স্ট্র্যাটেজি পাস করলে ১ পয়েন্ট; সমান হলে earnings yield, ROE, প্রবৃদ্ধি ও ইল্ডের র‍্যাঙ্ক দিয়ে ভাগ। কমপক্ষে ${cfg.minPass}টা স্ট্র্যাটেজি পাস করতে হবে, এক খাত থেকে সর্বোচ্চ ${cfg.sectorCap}টা। স্পনসর+সরকারের ধারণ ৩০%-এর কম হলে বাদ।</div>`+
+    Object.values(SCR_STRATS).map(s=>`<div style="margin-bottom:6px">${s.icon} <b>${s.name}</b> — ${s.rule}</div>`).join('')+
+    `<div style="margin-top:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px">⚠️ এটা স্বয়ংক্রিয়, নিয়ম-ভিত্তিক স্ক্রিনিং — বিনিয়োগ পরামর্শ নয়। ডেটা DSE ওয়েবসাইট থেকে নেওয়া, যা দেরিতে আপডেট বা ভুল হতে পারে; অতীতের ফলাফল ভবিষ্যতের নিশ্চয়তা দেয় না। কেনার আগে কোম্পানির রিপোর্ট নিজে যাচাই করুন।</div>`;
+  // Full results table
+  const tb=document.getElementById('scr-results-tbody'); if(!tb) return;
+  const R=cfg.ranked||[];
+  document.getElementById('scr-results-count').textContent=R.length?`(${R.length})`:'';
+  const f=(v,s='')=>v==null?'—':v+s;
+  tb.innerHTML=R.map((e,i)=>`<tr${e.picked?' style="background:rgba(99,102,241,.07)"':''}>
+    <td style="color:var(--muted)">${i+1}</td>
+    <td><div class="sym">${e.code}${e.picked?' <span title="In your watchlist">🤖</span>':''}</div><div class="name-sub">${e.sector}</div></td>
+    <td style="white-space:nowrap">${e.passed.map(k=>`<span title="${SCR_STRATS[k].name}: ${SCR_STRATS[k].rule.replace(/"/g,'&quot;')}" style="cursor:help">${SCR_STRATS[k].icon}</span>`).join(' ')}
+      <span style="font-size:10px;color:var(--muted)">${e.n}/6</span>${e.flags.length?` <span title="${e.flags.join(' · ')}" style="cursor:help">⚠️</span>`:''}</td>
+    <td>${f(e.pe)}</td><td>${f(e.pb)}</td><td>${f(e.roe,'%')}</td><td>${f(e.growth,'%')}</td><td>${f(e.dy,'%')}</td>
+    <td>${e.offHigh==null?'—':'−'+e.offHigh+'%'}</td>
+    <td class="pnl ${e.trend==null?'zero':e.trend>=0?'pos':'neg'}">${e.trend==null?'—':(e.trend>=0?'+':'')+e.trend+'%'}</td>
+    <td>${(state.watchlist||[]).some(w=>w.symbol===e.code)?'':`<button class="btn-icon edit" style="font-size:11px" onclick="scrAddManual('${e.code}')">+ Watch</button>`}</td>
+  </tr>`).join('')||emptyRow(11,'Run the screener to see results');
+}
+function scrAddManual(code){
+  const e=(scrCfg().ranked||[]).find(x=>x.code===code); if(!e) return;
+  state.watchlist=state.watchlist||[];
+  state.watchlist.push({id:Date.now(),symbol:code,name:e.name,targetPrice:0,sector:e.sector,
+    notes:`Passes ${e.n}/6: ${e.passed.map(k=>SCR_STRATS[k].name).join(', ')}`,addedDate:new Date().toISOString().split('T')[0],auto:false});
+  save(); renderWatchlist(); toast(`${code} added to watchlist`,'success');
+}
+
+function openScreenerSettings(){
+  const c=scrCfg(); const $=id=>document.getElementById(id);
+  $('scr-auto').checked=!!c.auto; $('scr-topn').value=String(c.topN); $('scr-minpass').value=String(c.minPass);
+  $('scr-mcap').value=c.minMcapCr; $('scr-sectorcap').value=String(c.sectorCap); $('scr-incb').checked=!!c.includeB;
+  $('scr-strat-toggles').innerHTML=Object.entries(SCR_STRATS).map(([k,s])=>
+    `<label class="theme-opt" style="cursor:pointer;font-size:12.5px;padding:5px 4px"><input type="checkbox" data-strat="${k}" ${c.strategies.includes(k)?'checked':''} style="margin-right:8px"/>${s.icon} ${s.name}</label>`).join('');
+  $('scr-settings-modal').classList.add('open');
+}
+function closeScreenerSettings(){ document.getElementById('scr-settings-modal').classList.remove('open'); }
+function saveScreenerSettings(){
+  const c=scrCfg(); const $=id=>document.getElementById(id);
+  const strats=[...document.querySelectorAll('#scr-strat-toggles input:checked')].map(i=>i.dataset.strat);
+  if(!strats.length) return toast('Keep at least one strategy','error');
+  Object.assign(c,{auto:$('scr-auto').checked,topN:+$('scr-topn').value,minPass:+$('scr-minpass').value,
+    minMcapCr:Math.max(0,+$('scr-mcap').value||0),sectorCap:+$('scr-sectorcap').value,includeB:$('scr-incb').checked,strategies:strats});
+  document.getElementById('scr-method').innerHTML=''; // re-render with new numbers
+  save(); closeScreenerSettings(); renderScreenerPanel();
+  toast('Screener settings saved — run it to apply','success');
+}
+// Daily auto-run (skipped if another device already ran it today — results arrive via cloud)
+function maybeAutoScreen(){
+  const c=scrCfg();
+  if(!c.auto||_scrRunning||!navigator.onLine) return;
+  if(c.lastRun&&Date.now()-new Date(c.lastRun)<20*3600000) return;
+  runScreener({manual:false});
+}
+
 function renderWatchlist(){
   state.watchlist = state.watchlist || [];
   const rows = state.watchlist.map(w => {
     const cp  = state.currentPrices[w.symbol] || 0;
     const gap = cp && w.targetPrice ? (cp - w.targetPrice) / w.targetPrice * 100 : null;
     let signal, sigCls;
-    if (!w.targetPrice)      { signal='No target'; sigCls='wl-wait'; }
+    if (!w.targetPrice&&w.scr) { signal=`🤖 ${w.scr.n}/6 strategies`; sigCls=w.scr.n>=4?'wl-buy':'wl-near'; }
+    else if (!w.targetPrice) { signal='No target'; sigCls='wl-wait'; }
     else if (!cp)            { signal='No price';  sigCls='wl-wait'; }
     else if (cp <= w.targetPrice)  { signal='🟢 Buy Zone';      sigCls='wl-buy';  }
     else if (gap < 5)        { signal='🟡 Getting Close'; sigCls='wl-near'; }
     else                     { signal='⏳ Wait';           sigCls='wl-wait'; }
-    return `<tr>
-      <td><div class="sym">${w.symbol}</div><div class="name-sub">${w.name||'—'}</div></td>
+    const chips=w.scr&&w.scr.passed?w.scr.passed.map(k=>SCR_STRATS[k]?`<span title="${SCR_STRATS[k].name}" style="cursor:help">${SCR_STRATS[k].icon}</span>`:'').join(''):'';
+    const held=getSymbols().includes(w.symbol)&&(calcPnL(w.symbol).heldQty>0);
+    return `<tr${w.auto?' style="background:rgba(99,102,241,.05)"':''}>
+      <td><div class="sym">${w.auto?'<span title="Added by the screener">🤖</span> ':''}${w.symbol}${held?' <span style="font-size:10px;color:var(--green)" title="You hold this">● held</span>':''}</div>
+        <div class="name-sub">${w.name||'—'}</div>
+        ${chips?`<div style="font-size:12px;margin-top:2px">${chips} <span style="font-size:10px;color:var(--muted)">${w.scr.n}/6</span>${w.scr.flags&&w.scr.flags.length?` <span title="${w.scr.flags.join(' · ')}" style="cursor:help">⚠️</span>`:''}</div>`:''}</td>
       <td>${w.targetPrice ? fmt(w.targetPrice) : '—'}</td>
       <td><div style="display:flex;align-items:center;gap:5px">
         <input class="price-input" value="${cp||''}" placeholder="Enter"
@@ -4325,6 +4714,7 @@ function renderWatchlist(){
       <td style="color:var(--muted);font-size:12px;max-width:200px;white-space:normal;line-height:1.4">${w.notes||'—'}</td>
       <td style="color:var(--muted);font-size:11px;white-space:nowrap">${w.addedDate?fmtDate(w.addedDate):'—'}</td>
       <td><div class="btn-actions">
+        ${w.auto?`<button class="btn-icon edit" style="font-size:11px" title="Keep — the screener won't remove it" onclick="keepWatchlistItem(${w.id})">📌</button>`:''}
         <button class="btn-icon edit" onclick="editWatchlistItem(${w.id})">✎</button>
         <button class="btn-icon edit" style="font-size:11px" onclick="openModal({symbol:'${w.symbol}',type:'buy',price:${w.targetPrice||0}})">Buy</button>
         <button class="btn-icon" onclick="removeWatchlistItem(${w.id})">✕</button>
@@ -4332,7 +4722,8 @@ function renderWatchlist(){
     </tr>`;
   }).join('');
   document.getElementById('watchlist-tbody').innerHTML =
-    rows || emptyRow(8, 'Watchlist is empty — add stocks you\'re researching or waiting to buy');
+    rows || emptyRow(8, 'Watchlist is empty — add stocks yourself or run the 🤖 screener above');
+  renderScreenerPanel();
 }
 
 // ─── TRADE CALCULATOR ─────────────────────────────────────────────────────────
@@ -6172,6 +6563,9 @@ document.getElementById('commission-modal').addEventListener('click',e=>{if(e.ta
 document.getElementById('cash-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeCashModal();});
 document.getElementById('assets-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeAssetsModal();});
 document.getElementById('email-auth-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeEmailAuthModal();});
+document.getElementById('scr-settings-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeScreenerSettings();});
+// Daily screener: wait a few seconds so cloud data (and another device's results) can arrive first
+setTimeout(maybeAutoScreen,8000);
 document.getElementById('ea-pw').addEventListener('keydown',e=>{if(e.key==='Enter')submitEmailAuth();});
 document.getElementById('goal-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeGoalModal();});
 document.getElementById('csv-import-modal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.target.classList.remove('open');});
