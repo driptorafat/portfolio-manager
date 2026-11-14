@@ -2524,7 +2524,7 @@ let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, wa
 function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
 
 // Bump this on every deploy — the auto-updater compares it against the live file.
-const APP_VERSION='2026-10-26.1';
+const APP_VERSION='2026-11-14.1';
 
 // Manual escape hatch (data menu): unregister SWs, clear caches, hard reload fresh.
 function hardRefresh(){
@@ -5627,7 +5627,7 @@ function initFirebase(){
       // Coming back from a redirect sign-in: surface any error
       if(sessionStorage.getItem('pm_auth_redirect')){
         sessionStorage.removeItem('pm_auth_redirect');
-        _fbAuth.getRedirectResult().catch(e=>toast('Sign in failed: '+(e.message||e.code)+'\nTry opening the site in Chrome/Safari (not the home-screen app) to sign in.','error'));
+        _fbAuth.getRedirectResult().catch(e=>e.code==='auth/unauthorized-domain'?openEmailAuthModal('signin'):toast('Sign in failed: '+(e.message||e.code)+'\nTry opening the site in Chrome/Safari (not the home-screen app) to sign in.','error'));
       }
       resolve();
     };
@@ -5649,6 +5649,9 @@ function signInWithGoogle(){
       const useRedirect=()=>{ sessionStorage.setItem('pm_auth_redirect','1'); _fbAuth.signInWithRedirect(p).catch(e=>toast('Sign in failed: '+e.message,'error')); };
       if(standalone) return useRedirect();
       _fbAuth.signInWithPopup(p).catch(e=>{
+        // Google sign-in is only allowed on domains listed in Firebase Auth;
+        // email/password has no such check, so offer it instead of failing.
+        if(e.code==='auth/unauthorized-domain'){ toast('Google sign-in is not enabled on this address yet — use email & password','info'); return openEmailAuthModal('signin'); }
         const fallback=['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/web-storage-unsupported','auth/internal-error'];
         if(fallback.includes(e.code)) useRedirect();
         else if(e.code!=='auth/popup-closed-by-user'&&e.code!=='auth/cancelled-popup-request') toast('Sign in failed: '+e.message,'error');
