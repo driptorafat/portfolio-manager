@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
+<script>/* GitHub's redirect to the custom domain lands on http://; sign-in, cloud sync and the home-screen app need https */
+if(location.protocol==='http:'&&!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))location.replace('https://'+location.host+location.pathname+location.search+location.hash);</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
@@ -2524,7 +2526,7 @@ let state = { transactions:[], currentPrices:{}, sectorMap:{}, lastSync:null, wa
 function commissionRate(){ return state.commissionOn===false?0:((+state.commissionRate||0)/100); }
 
 // Bump this on every deploy — the auto-updater compares it against the live file.
-const APP_VERSION='2026-11-14.1';
+const APP_VERSION='2026-11-14.2';
 
 // Manual escape hatch (data menu): unregister SWs, clear caches, hard reload fresh.
 function hardRefresh(){
